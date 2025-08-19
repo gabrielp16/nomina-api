@@ -389,7 +389,7 @@ router.post('/fix-database', asyncHandler(async (req: Request, res: Response) =>
   console.log('🔧 Starting database fix...');
   
   try {
-    const bcrypt = require('bcrypt');
+    const bcrypt = await import('bcrypt');
     
     // Clean existing data
     console.log('🧹 Cleaning existing data...');
@@ -404,25 +404,25 @@ router.post('/fix-database', asyncHandler(async (req: Request, res: Response) =>
         nombre: 'Gestión de Usuarios',
         descripcion: 'Crear, editar, eliminar y ver usuarios',
         modulo: 'usuarios',
-        accion: 'gestionar'
+        accion: 'MANAGE'
       },
       {
         nombre: 'Gestión de Roles',
         descripcion: 'Crear, editar, eliminar y ver roles',
         modulo: 'roles',
-        accion: 'gestionar'
+        accion: 'MANAGE'
       },
       {
         nombre: 'Gestión de Permisos',
         descripcion: 'Crear, editar, eliminar y ver permisos',
         modulo: 'permisos',
-        accion: 'gestionar'
+        accion: 'MANAGE'
       },
       {
         nombre: 'Dashboard',
         descripcion: 'Acceso al panel principal',
         modulo: 'dashboard',
-        accion: 'ver'
+        accion: 'READ'
       }
     ]);
 
@@ -434,7 +434,7 @@ router.post('/fix-database', asyncHandler(async (req: Request, res: Response) =>
       nombre: 'Administrador',
       descripcion: 'Rol con acceso completo al sistema',
       permisos: permissions.map((p: any) => p._id),
-      activo: true
+      isActive: true
     });
 
     console.log(`✅ Admin role created with ID: ${adminRole._id}`);
@@ -447,19 +447,20 @@ router.post('/fix-database', asyncHandler(async (req: Request, res: Response) =>
     console.log('👤 Creating admin user...');
     const adminUser = await User.create({
       nombre: 'Administrador',
+      apellido: 'Sistema',
       correo: 'admin@morchis.com',
+      numeroCelular: '+51999999999',
       password: hashedPassword,
-      rol: adminRole._id,
-      activo: true,
-      fechaCreacion: new Date(),
-      ultimoAcceso: null
+      role: adminRole._id,
+      isActive: true,
+      authProvider: 'local'
     });
 
     console.log(`✅ Admin user created with ID: ${adminUser._id}`);
 
     // Verify the data
     console.log('🔍 Verifying data...');
-    const userWithRole = await User.findById(adminUser._id).populate('rol');
+    const userWithRole = await User.findById(adminUser._id).populate('role');
     if (!userWithRole) {
       throw new Error('User verification failed');
     }
