@@ -8,6 +8,7 @@
     "dev": "tsx watch index.ts",
     "build": "tsc && tsc-alias",
     "start": "node dist/index.js",
+    "seed:railway": "tsx seed-railway.ts",
     "lint": "eslint server --ext .ts,.js",
     "lint:fix": "eslint server --ext .ts,.js --fix",
     "test": "jest",
