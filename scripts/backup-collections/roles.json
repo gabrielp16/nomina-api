@@ -1,0 +1,190 @@
+[
+  {
+    "_id": "688ffd862a0a72a1e5be3a98",
+    "nombre": "Super Administrador",
+    "descripcion": "Acceso completo a todas las funcionalidades del sistema",
+    "permisos": [
+      "688ffd862a0a72a1e5be3a42",
+      "688ffd862a0a72a1e5be3a49",
+      "688ffd862a0a72a1e5be3a4d",
+      "688ffd862a0a72a1e5be3a50",
+      "688ffd862a0a72a1e5be3a53",
+      "688ffd862a0a72a1e5be3a56",
+      "688ffd862a0a72a1e5be3a59",
+      "688ffd862a0a72a1e5be3a5c",
+      "688ffd862a0a72a1e5be3a5f",
+      "688ffd862a0a72a1e5be3a62",
+      "688ffd862a0a72a1e5be3a65",
+      "688ffd862a0a72a1e5be3a68",
+      "688ffd862a0a72a1e5be3a6b",
+      "688ffd862a0a72a1e5be3a6e",
+      "688ffd862a0a72a1e5be3a71",
+      "688ffd862a0a72a1e5be3a74",
+      "688ffd862a0a72a1e5be3a77",
+      "688ffd862a0a72a1e5be3a7a",
+      "688ffd862a0a72a1e5be3a7d",
+      "688ffd862a0a72a1e5be3a80",
+      "688ffd862a0a72a1e5be3a83",
+      "688ffd862a0a72a1e5be3a86",
+      "688ffd862a0a72a1e5be3a89",
+      "688ffd862a0a72a1e5be3a8c",
+      "688ffd862a0a72a1e5be3a8f",
+      "688ffd862a0a72a1e5be3a92",
+      "688ffd862a0a72a1e5be3a95",
+      "68925ec9144b27a59138ff94"
+    ],
+    "isActive": true,
+    "createdAt": "2025-08-04T00:23:34.255Z",
+    "updatedAt": "2025-08-05T19:51:22.106Z",
+    "__v": 1
+  },
+  {
+    "_id": "688ffd862a0a72a1e5be3a9c",
+    "nombre": "Administrador",
+    "descripcion": "Gestión de usuarios y operaciones básicas del sistema",
+    "permisos": [
+      "688ffd862a0a72a1e5be3a89",
+      "688ffd862a0a72a1e5be3a7a",
+      "688ffd862a0a72a1e5be3a42",
+      "688ffd862a0a72a1e5be3a74",
+      "688ffd862a0a72a1e5be3a8c",
+      "688ffd862a0a72a1e5be3a68",
+      "688ffd862a0a72a1e5be3a77",
+      "688ffd862a0a72a1e5be3a59",
+      "688ffd862a0a72a1e5be3a49",
+      "688ffd862a0a72a1e5be3a8f",
+      "688ffd862a0a72a1e5be3a4d",
+      "68925ec9144b27a59138ff94"
+    ],
+    "isActive": true,
+    "createdAt": "2025-08-04T00:23:34.273Z",
+    "updatedAt": "2025-08-05T19:51:22.304Z",
+    "__v": 1
+  },
+  {
+    "_id": "688ffd862a0a72a1e5be3aa0",
+    "nombre": "Usuario",
+    "descripcion": "Acceso básico de solo lectura al sistema",
+    "permisos": [
+      "688ffd862a0a72a1e5be3a74",
+      "688ffd862a0a72a1e5be3a8c",
+      "688ffd862a0a72a1e5be3a77",
+      "68925ec9144b27a59138ff94"
+    ],
+    "isActive": true,
+    "createdAt": "2025-08-04T00:23:34.278Z",
+    "updatedAt": "2025-08-05T19:51:22.306Z",
+    "__v": 3
+  },
+  {
+    "_id": "688ffd862a0a72a1e5be3aa4",
+    "nombre": "Supervisor",
+    "descripcion": "Supervisión de operaciones y gestión de nómina",
+    "permisos": [
+      "688ffd862a0a72a1e5be3a89",
+      "688ffd862a0a72a1e5be3a7a",
+      "688ffd862a0a72a1e5be3a86",
+      "688ffd862a0a72a1e5be3a74",
+      "688ffd862a0a72a1e5be3a8c",
+      "688ffd862a0a72a1e5be3a68",
+      "688ffd862a0a72a1e5be3a77",
+      "688ffd862a0a72a1e5be3a59",
+      "688ffd862a0a72a1e5be3a49",
+      "688ffd862a0a72a1e5be3a8f",
+      "688ffd862a0a72a1e5be3a4d",
+      "68925ec9144b27a59138ff94"
+    ],
+    "isActive": true,
+    "createdAt": "2025-08-04T00:23:34.283Z",
+    "updatedAt": "2025-08-05T19:51:22.308Z",
+    "__v": 1
+  },
+  {
+    "_id": "688ffd862a0a72a1e5be3aa8",
+    "nombre": "Empleado",
+    "descripcion": "Empleado con acceso limitado a su información de nómina",
+    "permisos": [
+      "688ffd862a0a72a1e5be3a89",
+      "688ffd862a0a72a1e5be3a8c",
+      "688ffd862a0a72a1e5be3a8f"
+    ],
+    "isActive": true,
+    "createdAt": "2025-08-04T00:23:34.288Z",
+    "updatedAt": "2025-08-11T15:37:45.877Z",
+    "__v": 3
+  },
+  {
+    "_id": "688ffd862a0a72a1e5be3aac",
+    "nombre": "Contador",
+    "descripcion": "Gestión completa de nómina y generación de reportes",
+    "permisos": [
+      "688ffd862a0a72a1e5be3a89",
+      "688ffd862a0a72a1e5be3a7a",
+      "688ffd862a0a72a1e5be3a95",
+      "688ffd862a0a72a1e5be3a86",
+      "688ffd862a0a72a1e5be3a74",
+      "688ffd862a0a72a1e5be3a8c",
+      "688ffd862a0a72a1e5be3a68",
+      "688ffd862a0a72a1e5be3a77",
+      "688ffd862a0a72a1e5be3a59",
+      "688ffd862a0a72a1e5be3a49",
+      "688ffd862a0a72a1e5be3a8f",
+      "68925ec9144b27a59138ff94"
+    ],
+    "isActive": true,
+    "createdAt": "2025-08-04T00:23:34.293Z",
+    "updatedAt": "2025-08-05T19:51:22.312Z",
+    "__v": 1
+  },
+  {
+    "_id": "689278fe6ae1268510bd1de8",
+    "nombre": "Role_testsss",
+    "descripcion": "asdasdasdasdas",
+    "permisos": [
+      "68925ec9144b27a59138ff94",
+      "688ffd862a0a72a1e5be3a86",
+      "688ffd862a0a72a1e5be3a83"
+    ],
+    "isActive": true,
+    "createdAt": "2025-08-05T21:34:54.927Z",
+    "updatedAt": "2025-08-09T22:37:43.687Z",
+    "__v": 0
+  },
+  {
+    "_id": "6893b0a2033808c047b4c480",
+    "nombre": "ROLE_USERS",
+    "descripcion": "",
+    "permisos": [
+      "688ffd862a0a72a1e5be3a49"
+    ],
+    "isActive": true,
+    "createdAt": "2025-08-06T19:44:34.184Z",
+    "updatedAt": "2025-08-06T19:44:34.184Z",
+    "__v": 0
+  },
+  {
+    "_id": "6893b0bc033808c047b4c49a",
+    "nombre": "ROLE_PERMISOS",
+    "descripcion": "",
+    "permisos": [
+      "688ffd862a0a72a1e5be3a68"
+    ],
+    "isActive": true,
+    "createdAt": "2025-08-06T19:45:00.353Z",
+    "updatedAt": "2025-08-06T19:45:00.353Z",
+    "__v": 0
+  },
+  {
+    "_id": "6893b0cb033808c047b4c4af",
+    "nombre": "ROLE_ROLES",
+    "descripcion": "",
+    "permisos": [
+      "688ffd862a0a72a1e5be3a59",
+      "688ffd862a0a72a1e5be3a68"
+    ],
+    "isActive": true,
+    "createdAt": "2025-08-06T19:45:15.986Z",
+    "updatedAt": "2025-08-06T19:57:19.125Z",
+    "__v": 1
+  }
+]

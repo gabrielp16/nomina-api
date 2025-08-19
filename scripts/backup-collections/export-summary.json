@@ -1,0 +1,14 @@
+{
+  "exportDate": "2025-08-19T04:38:40.988Z",
+  "totalCollections": 6,
+  "totalDocuments": 416,
+  "collections": {
+    "activities": 274,
+    "payrolls": 57,
+    "roles": 10,
+    "employees": 36,
+    "permissions": 29,
+    "users": 10
+  },
+  "connectionString": "mongodb://localhost:27017/morchis-nomina"
+}
