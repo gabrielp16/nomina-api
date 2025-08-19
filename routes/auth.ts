@@ -487,4 +487,59 @@ router.post('/fix-database', asyncHandler(async (req: Request, res: Response) =>
   }
 }));
 
+// @route   GET /api/auth/debug
+// @desc    TEMPORARY - Debug database connection and data
+// @access  Public (remove after fixing)
+router.get('/debug', asyncHandler(async (req: Request, res: Response) => {
+  console.log('🔧 Starting database debug...');
+  
+  try {
+    // Get database connection info
+    const dbUri = process.env.DATABASE_URL || process.env.MONGODB_URI || 'Not configured';
+    const isProduction = process.env.NODE_ENV === 'production';
+    
+    // Count documents
+    const userCount = await User.countDocuments();
+    const roleCount = await Role.countDocuments();
+    const permissionCount = await Permission.countDocuments();
+    
+    // Find admin user
+    const adminUser = await User.findOne({ correo: 'admin@morchis.com' })
+      .populate('role')
+      .select('-password');
+    
+    res.json({
+      success: true,
+      message: 'Database debug info',
+      data: {
+        environment: process.env.NODE_ENV,
+        isProduction,
+        dbConfigured: !!dbUri,
+        dbUri: dbUri.replace(/\/\/([^:]+):([^@]+)@/, '//***:***@'),
+        counts: {
+          users: userCount,
+          roles: roleCount,
+          permissions: permissionCount
+        },
+        adminUser: adminUser ? {
+          id: adminUser._id,
+          email: adminUser.correo,
+          name: `${adminUser.nombre} ${adminUser.apellido}`,
+          isActive: adminUser.isActive,
+          role: adminUser.role
+        } : null,
+        timestamp: new Date().toISOString()
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Error in debug:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to debug database',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+}));
+
 export default router;
