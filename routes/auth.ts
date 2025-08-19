@@ -439,18 +439,14 @@ router.post('/fix-database', asyncHandler(async (req: Request, res: Response) =>
 
     console.log(`✅ Admin role created with ID: ${adminRole._id}`);
 
-    // Hash password
-    console.log('🔒 Hashing password...');
-    const hashedPassword = await bcrypt.hash('admin123', 12);
-
-    // Create admin user
+    // Create admin user (let User model handle password hashing)
     console.log('👤 Creating admin user...');
     const adminUser = await User.create({
       nombre: 'Administrador',
       apellido: 'Sistema',
       correo: 'admin@morchis.com',
       numeroCelular: '+51999999999',
-      password: hashedPassword,
+      password: 'admin123', // Raw password - let User model hash it
       role: adminRole._id,
       isActive: true,
       authProvider: 'local'
