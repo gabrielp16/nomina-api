@@ -18,7 +18,8 @@ export interface IPayroll extends Document {
   totalConsumos: number; // Suma de todos los consumos
   deudaMorchis: number; // Lo que Morchis le debe al empleado
   adelantoNomina: number; // Adelanto solicitado
-  totalDescuentos: number; // consumos + adelantos
+  descuadre: number; // Valor que hizo falta en el cierre contable del día
+  totalDescuentos: number; // consumos + adelantos + descuadre
   salarioNeto: number; // salarioBruto - totalDescuentos + deudaMorchis
   procesadoPor: Types.ObjectId; // Usuario que procesó la nómina
   estado: 'PENDIENTE' | 'PROCESADA' | 'PAGADA';
@@ -92,6 +93,12 @@ const payrollSchema = new Schema<IPayroll>({
     min: 0
   },
   adelantoNomina: {
+    type: Number,
+    required: true,
+    default: 0,
+    min: 0
+  },
+  descuadre: {
     type: Number,
     required: true,
     default: 0,

@@ -94,6 +94,10 @@ const payrollValidation = [
     .optional()
     .isFloat({ min: 0 })
     .withMessage('El adelanto de nómina debe ser un número positivo'),
+  body('descuadre')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('El descuadre debe ser un número positivo'),
   body('observaciones')
     .optional()
     .isLength({ max: 500 })
@@ -133,6 +137,10 @@ const updatePayrollValidation = [
     .optional()
     .isFloat({ min: 0 })
     .withMessage('El adelanto de nómina debe ser un número positivo'),
+  body('descuadre')
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage('El descuadre debe ser un número positivo'),
   body('estado')
     .optional()
     .isIn(['PENDIENTE', 'PROCESADA', 'PAGADA'])
@@ -144,7 +152,7 @@ const updatePayrollValidation = [
 ];
 
 // Función helper para calcular valores de nómina
-function calculatePayrollValues(employee: any, horaInicio: string, horaFin: string, consumos: any[], deudaMorchis: number = 0, adelantoNomina: number = 0) {
+function calculatePayrollValues(employee: any, horaInicio: string, horaFin: string, consumos: any[], deudaMorchis: number = 0, adelantoNomina: number = 0, descuadre: number = 0) {
   // Calcular horas trabajadas
   const timeResult = calculateWorkTime(horaInicio, horaFin);
   const { horas, minutos } = timeResult;
@@ -157,7 +165,7 @@ function calculatePayrollValues(employee: any, horaInicio: string, horaFin: stri
   const totalConsumos = consumos.reduce((sum, consumo) => sum + consumo.valor, 0);
   
   // Calcular descuentos totales
-  const totalDescuentos = totalConsumos + adelantoNomina;
+  const totalDescuentos = totalConsumos + adelantoNomina + descuadre;
   
   // Calcular salario neto
   const salarioNeto = salarioBruto - totalDescuentos + deudaMorchis;
@@ -374,7 +382,7 @@ router.post('/', auth, requirePermission('CREATE_PAYROLL'), activityLogger('CREA
     });
   }
 
-  const { employeeId, fecha, horaInicio, horaFin, consumos, deudaMorchis = 0, adelantoNomina = 0, observaciones } = req.body;
+  const { employeeId, fecha, horaInicio, horaFin, consumos, deudaMorchis = 0, adelantoNomina = 0, descuadre = 0, observaciones } = req.body;
   const user = req.user!;
 
   // Si el usuario no tiene MANAGE_PAYROLL, solo puede crear registros para sí mismo
@@ -420,7 +428,7 @@ router.post('/', auth, requirePermission('CREATE_PAYROLL'), activityLogger('CREA
   }
 
   // Calcular valores de la nómina
-  const calculatedValues = calculatePayrollValues(employee, horaInicio, horaFin, consumos, deudaMorchis, adelantoNomina);
+  const calculatedValues = calculatePayrollValues(employee, horaInicio, horaFin, consumos, deudaMorchis, adelantoNomina, descuadre);
 
   // Crear nómina
   const payroll = new Payroll({
@@ -432,6 +440,7 @@ router.post('/', auth, requirePermission('CREATE_PAYROLL'), activityLogger('CREA
     consumos,
     deudaMorchis,
     adelantoNomina,
+    descuadre,
     procesadoPor: req.user!._id,
     observaciones
   });
@@ -493,7 +502,7 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
     });
   }
 
-  const { fecha, horaInicio, horaFin, consumos, deudaMorchis, adelantoNomina, estado, observaciones } = req.body;
+  const { fecha, horaInicio, horaFin, consumos, deudaMorchis, adelantoNomina, descuadre, estado, observaciones } = req.body;
 
   // Actualizar campos básicos
   if (fecha !== undefined) payroll.fecha = new Date(fecha);
@@ -502,7 +511,8 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
 
   // Si se actualizan horas o consumos, recalcular valores
   const needsRecalculation = horaInicio !== undefined || horaFin !== undefined || 
-                            consumos !== undefined || deudaMorchis !== undefined || adelantoNomina !== undefined;
+                            consumos !== undefined || deudaMorchis !== undefined || adelantoNomina !== undefined ||
+                            descuadre !== undefined;
 
   if (needsRecalculation) {
     const newHoraInicio = horaInicio || payroll.horaInicio;
@@ -510,6 +520,7 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
     const newConsumos = consumos || payroll.consumos;
     const newDeudaMorchis = deudaMorchis !== undefined ? deudaMorchis : payroll.deudaMorchis;
     const newAdelantoNomina = adelantoNomina !== undefined ? adelantoNomina : payroll.adelantoNomina;
+    const newDescuadre = descuadre !== undefined ? descuadre : payroll.descuadre;
 
     const calculatedValues = calculatePayrollValues(
       payroll.employee, 
@@ -517,7 +528,8 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
       newHoraFin, 
       newConsumos, 
       newDeudaMorchis, 
-      newAdelantoNomina
+      newAdelantoNomina,
+      newDescuadre
     );
 
     // Actualizar valores calculados
@@ -527,6 +539,7 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
       consumos: newConsumos,
       deudaMorchis: newDeudaMorchis,
       adelantoNomina: newAdelantoNomina,
+      descuadre: newDescuadre,
       ...calculatedValues
     });
   }
