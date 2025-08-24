@@ -105,6 +105,84 @@ router.get('/', auth, requirePermission('READ_USERS'), asyncHandler(async (req: 
   });
 }));
 
+// Validación específica para actualización de perfil propio (sin rol)
+const updateProfileValidation = [
+  body('nombre')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('El nombre debe tener entre 2 y 50 caracteres'),
+  body('apellido')
+    .optional()
+    .trim()
+    .isLength({ min: 2, max: 50 })
+    .withMessage('El apellido debe tener entre 2 y 50 caracteres'),
+  body('correo')
+    .optional()
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Por favor ingresa un correo válido'),
+  body('numeroCelular')
+    .optional()
+    .matches(/^\+?[\d\s\-\(\)]{10,}$/)
+    .withMessage('Por favor ingresa un número celular válido')
+];
+
+// @route   PUT /api/users/profile
+// @desc    Actualizar perfil propio del usuario autenticado
+// @access  Private (solo requiere autenticación)
+router.put('/profile', auth, updateProfileValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      message: 'Datos de entrada inválidos',
+      errors: errors.array()
+    });
+  }
+
+  const userId = req.user!.id;
+  const user = await User.findById(userId);
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: 'Usuario no encontrado'
+    });
+  }
+
+  const { nombre, apellido, correo, numeroCelular } = req.body;
+
+  // Si se está actualizando el correo, verificar que no exista
+  if (correo && correo !== user.correo) {
+    const existingUser = await User.findOne({ correo });
+    if (existingUser) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ya existe un usuario con este correo'
+      });
+    }
+  }
+
+  // Actualizar campos permitidos (sin rol)
+  if (nombre !== undefined) user.nombre = nombre;
+  if (apellido !== undefined) user.apellido = apellido;
+  if (correo !== undefined) user.correo = correo;
+  if (numeroCelular !== undefined) user.numeroCelular = numeroCelular;
+
+  await user.save();
+
+  // Retornar usuario actualizado con rol populado
+  const updatedUser = await User.findById(user._id)
+    .populate('role', 'nombre descripcion')
+    .select('-password');
+
+  res.json({
+    success: true,
+    message: 'Perfil actualizado exitosamente',
+    data: updatedUser
+  });
+}));
+
 // @route   GET /api/users/:id
 // @desc    Obtener usuario por ID
 // @access  Private (READ_USERS permission)
