@@ -128,6 +128,28 @@ const updateProfileValidation = [
     .withMessage('Por favor ingresa un número celular válido')
 ];
 
+// @route   GET /api/users/profile
+// @desc    Obtener perfil del usuario autenticado
+// @access  Private (solo requiere autenticación)
+router.get('/profile', auth, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const userId = req.user!.id;
+  const user = await User.findById(userId)
+    .populate('role', 'nombre descripcion')
+    .select('-password');
+
+  if (!user) {
+    return res.status(404).json({
+      success: false,
+      message: 'Usuario no encontrado'
+    });
+  }
+
+  res.json({
+    success: true,
+    data: user
+  });
+}));
+
 // @route   PUT /api/users/profile
 // @desc    Actualizar perfil propio del usuario autenticado
 // @access  Private (solo requiere autenticación)
