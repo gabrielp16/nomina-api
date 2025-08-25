@@ -58,7 +58,11 @@ const updateUserValidation = [
   body('role')
     .optional()
     .isMongoId()
-    .withMessage('ID de rol inválido')
+    .withMessage('ID de rol inválido'),
+  body('password')
+    .optional()
+    .isLength({ min: 6 })
+    .withMessage('La contraseña debe tener al menos 6 caracteres')
 ];
 
 // @route   GET /api/users
@@ -313,7 +317,18 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
     });
   }
 
-  const { nombre, apellido, correo, numeroCelular, role } = req.body;
+  const { nombre, apellido, correo, numeroCelular, role, password } = req.body;
+
+  console.log('🔍 Datos recibidos en PUT /users/:id:', {
+    nombre: !!nombre,
+    apellido: !!apellido,
+    correo: !!correo,
+    numeroCelular: !!numeroCelular,
+    role: !!role,
+    password: !!password,
+    passwordLength: password ? password.length : 0,
+    passwordTrimmed: password && password.trim() ? password.trim().length : 0
+  });
 
   // Si se está actualizando el correo, verificar que no exista
   if (correo && correo !== user.correo) {
@@ -343,8 +358,17 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
   if (correo) user.correo = correo;
   if (numeroCelular) user.numeroCelular = numeroCelular;
   if (role) user.role = role;
+  if (password && password.trim()) {
+    console.log('🔐 Actualizando contraseña del usuario...');
+    user.password = password;
+    console.log('✅ Contraseña asignada al modelo de usuario');
+  } else {
+    console.log('⏭️ No se actualiza contraseña (vacía o no proporcionada)');
+  }
 
+  console.log('💾 Guardando cambios del usuario...');
   await user.save();
+  console.log('✅ Usuario guardado exitosamente');
 
   // Obtener usuario actualizado con rol poblado
   const updatedUser = await User.findById(user._id)
