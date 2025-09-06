@@ -44,17 +44,48 @@ app.use(compression());
 app.use(morgan('combined'));
 app.use(limiter);
 
+// Handle preflight requests explicitly
+app.options('*', (req, res) => {
+  res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Max-Age', '86400'); // 24 hours
+  res.sendStatus(204);
+});
+
 // CORS configuration
 app.use(cors({
-  origin: [
-    process.env.FRONTEND_URL || 'http://localhost:5174',
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'null' // Para archivos locales
-  ],
+  origin: function (origin, callback) {
+    // Lista de orígenes permitidos
+    const allowedOrigins = [
+      process.env.FRONTEND_URL || 'http://localhost:5174',
+      'http://localhost:5173',
+      'http://localhost:3000',
+      'https://nomina-morchis.vercel.app',
+      'https://nomina-morchis-git-main-gabrielp16s-projects.vercel.app'
+    ];
+    
+    // Permitir requests sin origin (mobile apps, postman, etc)
+    if (!origin) return callback(null, true);
+    
+    // Permitir preview deployments de Vercel
+    if (origin.includes('nomina-morchis') && origin.includes('vercel.app')) {
+      return callback(null, true);
+    }
+    
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 }));
 
 // Body parsing middleware
