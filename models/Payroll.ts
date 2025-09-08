@@ -23,6 +23,7 @@ export interface IPayroll extends Document {
   salarioNeto: number; // salarioBruto - totalDescuentos + deudaMorchis
   procesadoPor: Types.ObjectId; // Usuario que procesó la nómina
   estado: 'PENDIENTE' | 'PROCESADA' | 'PAGADA';
+  fechaPago?: Date; // Fecha cuando se marcó como pagada
   observaciones?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -123,6 +124,9 @@ const payrollSchema = new Schema<IPayroll>({
     type: String,
     enum: ['PENDIENTE', 'PROCESADA', 'PAGADA'],
     default: 'PENDIENTE'
+  },
+  fechaPago: {
+    type: Date
   },
   observaciones: {
     type: String,

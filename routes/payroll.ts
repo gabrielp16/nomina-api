@@ -608,6 +608,64 @@ router.delete('/:id', auth, requirePermission('DELETE_PAYROLL'), activityLogger(
   });
 }));
 
+// @route   PATCH /api/payroll/:id/pay
+// @desc    Marcar nómina como pagada (solo administradores)
+// @access  Private (PAY_PAYROLL permission)
+router.patch('/:id/pay', auth, requirePermission('PAY_PAYROLL'), activityLogger('PAY', 'PAYROLL'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  const payroll = await Payroll.findById(req.params.id)
+    .populate({
+      path: 'employee',
+      populate: {
+        path: 'user',
+        select: 'nombre apellido correo'
+      }
+    });
+
+  if (!payroll) {
+    return res.status(404).json({
+      success: false,
+      message: 'Nómina no encontrada'
+    });
+  }
+
+  // Verificar que la nómina esté en estado PROCESADA
+  if (payroll.estado !== 'PROCESADA') {
+    return res.status(400).json({
+      success: false,
+      message: 'Solo se pueden pagar nóminas en estado PROCESADA'
+    });
+  }
+
+  // Guardar datos del empleado antes de actualizar
+  const employeeName = (payroll.employee as any)?.user?.nombre || 'Usuario';
+  const employeeLastName = (payroll.employee as any)?.user?.apellido || '';
+
+  // Actualizar estado a PAGADA
+  payroll.estado = 'PAGADA';
+  payroll.fechaPago = new Date();
+  await payroll.save();
+
+  // Obtener nómina actualizada con datos poblados
+  const updatedPayroll = await Payroll.findById(payroll._id)
+    .populate({
+      path: 'employee',
+      populate: {
+        path: 'user',
+        select: 'nombre apellido correo'
+      }
+    })
+    .populate({
+      path: 'procesadoPor',
+      select: 'nombre apellido'
+    });
+
+  res.json({
+    success: true,
+    message: `Nómina de ${employeeName} ${employeeLastName} marcada como pagada exitosamente`,
+    data: updatedPayroll
+  });
+}));
+
 // @route   GET /api/payroll/stats/summary
 // @desc    Obtener estadísticas de nóminas (filtradas por empleado si no es admin)
 // @access  Private (READ_PAYROLL permission)

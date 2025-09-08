@@ -5,7 +5,7 @@ export interface IPermission extends Document {
   nombre: string;
   descripcion?: string;
   modulo: string;
-  accion: 'CREATE' | 'READ' | 'UPDATE' | 'DELETE' | 'MANAGE';
+  accion: 'CREATE' | 'READ' | 'UPDATE' | 'DELETE' | 'MANAGE' | 'PAY';
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -33,7 +33,7 @@ const permissionSchema = new Schema<IPermission>({
   accion: {
     type: String,
     required: true,
-    enum: ['CREATE', 'READ', 'UPDATE', 'DELETE', 'MANAGE']
+    enum: ['CREATE', 'READ', 'UPDATE', 'DELETE', 'MANAGE', 'PAY']
   },
   isActive: {
     type: Boolean,

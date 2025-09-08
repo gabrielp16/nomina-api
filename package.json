@@ -16,12 +16,7 @@
     "test:coverage": "jest --coverage",
     "type-check": "tsc --noEmit",
     "clean": "rimraf dist",
-    "prepare": "npm run build",
-    "seed": "tsx scripts/seed.ts",
-    "setup-employee": "tsx scripts/setup-employee.ts",
-    "view-users": "tsx scripts/view-users.ts",
-    "check-cors": "node scripts/check-cors-config.js",
-    "test-cors": "node scripts/test-cors.mjs"
+    "prepare": "npm run build"
   },
   "dependencies": {
     "@types/bcrypt": "^6.0.0",
