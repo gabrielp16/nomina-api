@@ -169,7 +169,7 @@ const seedRoles = async (permissionIds: mongoose.Types.ObjectId[]): Promise<{ ad
   // Rol de Empleado - acceso limitado (SIN READ_DASHBOARD)
   const empleadoPermissions = await Permission.find({
     nombre: {
-      $in: ['READ_PAYROLL', 'CREATE_PAYROLL', 'UPDATE_PAYROLL']
+      $in: ['READ_PAYROLL', 'CREATE_PAYROLL', 'UPDATE_PAYROLL', 'DELETE_PAYROLL']
     }
   });
   
@@ -235,7 +235,7 @@ const seedUsers = async (adminRoleId: mongoose.Types.ObjectId, userRoleId: mongo
     nombre: 'Super',
     apellido: 'Administrador',
     correo: 'admin@morchis.com',
-    numeroCelular: '+1234567890',
+    numeroCelular: '3001234567',
     password: 'admin123', // Sin hashear - el middleware lo hará
     role: adminRoleId,
     isActive: true,
@@ -251,7 +251,7 @@ const seedUsers = async (adminRoleId: mongoose.Types.ObjectId, userRoleId: mongo
     nombre: 'Usuario',
     apellido: 'Prueba',
     correo: 'usuario@morchis.com',
-    numeroCelular: '+0987654321',
+    numeroCelular: '3001234567',
     password: 'usuario123', // Sin hashear - el middleware lo hará
     role: userRoleId,
     isActive: true,
@@ -267,7 +267,7 @@ const seedUsers = async (adminRoleId: mongoose.Types.ObjectId, userRoleId: mongo
     nombre: 'Juan',
     apellido: 'Trabajador',
     correo: 'empleado@morchis.com',
-    numeroCelular: '+57300123456',
+    numeroCelular: '3001234567',
     password: 'empleado123', // Sin hashear - el middleware lo hará
     role: empleadoRoleId,
     isActive: true,

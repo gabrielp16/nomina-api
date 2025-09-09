@@ -96,7 +96,8 @@ export const logAuthActivity = async (
     | 'REGISTER'
     | 'CREATE_USERS'
     | 'UPDATE_USERS'
-    | 'DELETE_USERS',
+    | 'DELETE_USERS'
+    | 'CHANGE_PASSWORD',
   req: Request,
   status: 'success' | 'warning' | 'error' = 'success'
 ) => {
@@ -124,6 +125,9 @@ export const logAuthActivity = async (
         break;
       case 'DELETE_USERS':
         details = 'Usuario eliminado del sistema';
+        break;
+      case 'CHANGE_PASSWORD':
+        details = 'Usuario cambió su contraseña';
         break;
     }
     

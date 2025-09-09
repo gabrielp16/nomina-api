@@ -542,4 +542,84 @@ router.get('/debug', asyncHandler(async (req: Request, res: Response) => {
   }
 }));
 
+// @route   PUT /api/auth/change-password
+// @desc    Cambiar contraseña del usuario autenticado
+// @access  Private
+const changePasswordValidation = [
+  body('currentPassword')
+    .notEmpty()
+    .withMessage('La contraseña actual es requerida'),
+  body('newPassword')
+    .isLength({ min: 6 })
+    .withMessage('La nueva contraseña debe tener al menos 6 caracteres'),
+  body('confirmPassword')
+    .custom((value, { req }) => {
+      if (value !== req.body.newPassword) {
+        throw new Error('Las contraseñas no coinciden');
+      }
+      return true;
+    })
+];
+
+router.put('/change-password', auth, changePasswordValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({
+      success: false,
+      message: 'Datos de entrada inválidos',
+      errors: errors.array()
+    });
+  }
+
+  const { currentPassword, newPassword } = req.body;
+  const userId = req.user!._id;
+
+  try {
+    // Obtener el usuario actual
+    const user = await User.findById(userId).select('+password');
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Usuario no encontrado'
+      });
+    }
+
+    // Verificar la contraseña actual
+    const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+    if (!isCurrentPasswordValid) {
+      return res.status(400).json({
+        success: false,
+        message: 'La contraseña actual es incorrecta'
+      });
+    }
+
+    // Actualizar la contraseña
+    user.password = newPassword;
+    await user.save();
+
+    // Log de la actividad
+    await logAuthActivity(
+      userId.toString(),
+      `${user.nombre} ${user.apellido}`,
+      user.correo,
+      'CHANGE_PASSWORD',
+      req,
+      'success'
+    );
+
+    res.json({
+      success: true,
+      message: 'Contraseña actualizada exitosamente'
+    });
+
+  } catch (error) {
+    console.error('❌ Error changing password:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error interno del servidor',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+}));
+
 export default router;
