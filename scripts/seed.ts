@@ -222,63 +222,75 @@ const seedRoles = async (permissionIds: mongoose.Types.ObjectId[]): Promise<{ ad
   };
 };
 
-// Función para crear usuario administrador
+// Función para crear usuarios por defecto (preservando datos existentes)
 const seedUsers = async (adminRoleId: mongoose.Types.ObjectId, userRoleId: mongoose.Types.ObjectId, empleadoRoleId: mongoose.Types.ObjectId): Promise<void> => {
-  console.log('🌱 Creando usuarios por defecto...');
+  console.log('🌱 Verificando/creando usuarios por defecto...');
   
-  // TEMPORAL: Eliminar usuarios existentes para recrearlos
-  await User.deleteMany({ correo: { $in: ['admin@morchis.com', 'usuario@morchis.com', 'empleado@morchis.com'] } });
-  console.log('  🗑️ Usuarios existentes eliminados para recreación');
+  // Función helper para crear o actualizar usuario sin tocar la contraseña
+  const createOrUpdateUser = async (userData: any, defaultPassword: string, roleName: string) => {
+    const existingUser = await User.findOne({ correo: userData.correo });
+    
+    if (existingUser) {
+      console.log(`  - Usuario ya existe: ${userData.correo} - preservando datos existentes`);
+      
+      // Solo actualizar el rol si es diferente (para mantener roles actualizados)
+      if (!existingUser.role.equals(userData.role)) {
+        existingUser.role = userData.role;
+        await existingUser.save();
+        console.log(`    ✓ Rol actualizado para ${userData.correo}`);
+      }
+      
+      return existingUser;
+    } else {
+      // Crear nuevo usuario solo si no existe
+      const newUser = new User({
+        ...userData,
+        password: defaultPassword // Solo se asigna la contraseña por defecto a usuarios nuevos
+      });
+      
+      await newUser.save();
+      console.log(`  ✓ Usuario ${roleName} creado: ${userData.correo} / ${defaultPassword}`);
+      return newUser;
+    }
+  };
   
   // Usuario Super Administrador
-  const adminUser = new User({
+  const adminUser = await createOrUpdateUser({
     nombre: 'Super',
     apellido: 'Administrador',
     correo: 'admin@morchis.com',
     numeroCelular: '3001234567',
-    password: 'admin123', // Sin hashear - el middleware lo hará
     role: adminRoleId,
     isActive: true,
     emailVerified: true,
-    authProvider: 'local' // Importante: especificar que es local
-  });
-  
-  await adminUser.save();
-  console.log('  ✓ Usuario administrador creado: admin@morchis.com / admin123');
+    authProvider: 'local'
+  }, 'admin123', 'administrador');
 
   // Usuario de prueba
-  const testUser = new User({
+  const testUser = await createOrUpdateUser({
     nombre: 'Usuario',
     apellido: 'Prueba',
     correo: 'usuario@morchis.com',
     numeroCelular: '3001234567',
-    password: 'usuario123', // Sin hashear - el middleware lo hará
     role: userRoleId,
     isActive: true,
     emailVerified: true,
-    authProvider: 'local' // Importante: especificar que es local
-  });
-
-  await testUser.save();
-  console.log('  ✓ Usuario de prueba creado: usuario@morchis.com / usuario123');
+    authProvider: 'local'
+  }, 'usuario123', 'de prueba');
   
   // Usuario Empleado
-  const empleadoUser = new User({
+  const empleadoUser = await createOrUpdateUser({
     nombre: 'Juan',
     apellido: 'Trabajador',
     correo: 'empleado@morchis.com',
     numeroCelular: '3001234567',
-    password: 'empleado123', // Sin hashear - el middleware lo hará
     role: empleadoRoleId,
     isActive: true,
     emailVerified: true,
-    authProvider: 'local' // Importante: especificar que es local
-  });
-
-  await empleadoUser.save();
-  console.log('  ✓ Usuario empleado creado: empleado@morchis.com / empleado123');
+    authProvider: 'local'
+  }, 'empleado123', 'empleado');
   
-  // Crear registro de Employee para el usuario empleado
+  // Crear registro de Employee para el usuario empleado (solo si no existe)
   const existingEmployee = await Employee.findOne({ user: empleadoUser._id });
   if (!existingEmployee) {
     const newEmployee = new Employee({
@@ -290,7 +302,7 @@ const seedUsers = async (adminRoleId: mongoose.Types.ObjectId, userRoleId: mongo
     await newEmployee.save();
     console.log('  ✓ Registro de empleado creado con salario: $15,000/hora');
   } else {
-    console.log('  - Registro de empleado ya existe');
+    console.log('  - Registro de empleado ya existe - preservando datos');
   }
 };
 
