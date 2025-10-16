@@ -12,6 +12,33 @@ import { logAuthActivity } from '../middleware/activityLogger.js';
 
 const router = express.Router();
 
+// Middleware CORS específico para rutas de auth (más permisivo)
+router.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  // Permitir orígenes específicos de Vercel
+  if (origin && (
+    origin === 'https://nomina-morchis.vercel.app' ||
+    origin.includes('nomina-morchis') && origin.includes('vercel.app') ||
+    origin.includes('localhost')
+  )) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  
+  // Manejar preflight específicamente para auth
+  if (req.method === 'OPTIONS') {
+    console.log(`AUTH PREFLIGHT - Origin: ${origin}, Path: ${req.path}`);
+    res.status(200).end();
+    return;
+  }
+  
+  next();
+});
+
 // Función para generar JWT
 const generateToken = (userId: string): string => {
   return jwt.sign(

@@ -47,39 +47,43 @@ app.use(compression());
 app.use(morgan('combined'));
 app.use(limiter);
 
-// CORS configuration - SIMPLIFICADA PARA RESOLVER URGENTE
-app.use(cors({
-  origin: [
-    'https://nomina-morchis.vercel.app',
-    'https://nomina-morchis-git-main-gabrielp16s-projects.vercel.app',
-    process.env.FRONTEND_URL || 'http://localhost:5174',
-    'http://localhost:5173',
-    'http://localhost:3000'
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  optionsSuccessStatus: 200
-}));
+// CORS configuration para Railway y Vercel
+const allowedOrigins = [
+  'https://nomina-morchis.vercel.app',
+  'https://nomina-morchis-git-main-gabrielp16s-projects.vercel.app',
+  process.env.FRONTEND_URL || 'http://localhost:5174',
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'http://localhost:5174'
+];
 
-// Middleware adicional para headers CORS
+// Configurar CORS de forma robusta
 app.use((req, res, next) => {
   const origin = req.headers.origin;
-  const allowedOrigins = [
-    'https://nomina-morchis.vercel.app',
-    'https://nomina-morchis-git-main-gabrielp16s-projects.vercel.app'
-  ];
   
-  if (origin && (allowedOrigins.includes(origin) || 
-      (origin.includes('nomina-morchis') && origin.includes('vercel.app')))) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+  console.log(`CORS Request - Origin: ${origin}, Method: ${req.method}, Path: ${req.path}`);
+  
+  // Permitir todos los subdominios de Vercel para nomina-morchis
+  const isAllowedOrigin = !origin || // Permitir requests sin origin
+    origin === 'https://nomina-morchis.vercel.app' ||
+    (origin.includes('nomina-morchis') && origin.includes('vercel.app')) ||
+    allowedOrigins.includes(origin);
+  
+  if (isAllowedOrigin) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+    console.log(`CORS Allowed - Origin: ${origin}`);
+  } else {
+    console.log(`CORS Blocked - Origin: ${origin}`);
   }
   
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS, HEAD');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization, Cache-Control, Pragma');
+  res.header('Access-Control-Max-Age', '86400'); // 24 horas
   
+  // Manejar preflight requests
   if (req.method === 'OPTIONS') {
+    console.log(`CORS Preflight - Origin: ${origin}, Path: ${req.path}`);
     res.status(200).end();
     return;
   }
@@ -87,9 +91,37 @@ app.use((req, res, next) => {
   next();
 });
 
+// Usar cors middleware como backup
+app.use(cors({
+  origin: function (origin, callback) {
+    // Permitir requests sin origin (mobile apps, etc.)
+    if (!origin) return callback(null, true);
+    
+    // Verificar si el origin está en la lista permitida o es un subdominio de Vercel
+    if (allowedOrigins.includes(origin) || 
+        (origin.includes('nomina-morchis') && origin.includes('vercel.app'))) {
+      return callback(null, true);
+    }
+    
+    callback(new Error('Not allowed by CORS'));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
+  allowedHeaders: ['Origin', 'X-Requested-With', 'Content-Type', 'Accept', 'Authorization', 'Cache-Control', 'Pragma'],
+  optionsSuccessStatus: 200
+}));
+
 // Body parsing middleware
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Middleware para logging de CORS en producción
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    console.log(`CORS Debug - Origin: ${req.headers.origin}, Method: ${req.method}, URL: ${req.url}`);
+    next();
+  });
+}
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -99,7 +131,22 @@ app.get('/health', (req, res) => {
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
     database: mongoose.connection.readyState === 1 ? 'Connected' : 'Disconnected',
-    environment: process.env.NODE_ENV || 'development'
+    environment: process.env.NODE_ENV || 'development',
+    corsOrigins: allowedOrigins
+  });
+});
+
+// CORS test endpoint
+app.get('/cors-test', (req, res) => {
+  res.json({
+    origin: req.headers.origin,
+    allowedOrigins: allowedOrigins,
+    corsHeaders: {
+      'Access-Control-Allow-Origin': res.getHeader('Access-Control-Allow-Origin'),
+      'Access-Control-Allow-Credentials': res.getHeader('Access-Control-Allow-Credentials'),
+      'Access-Control-Allow-Methods': res.getHeader('Access-Control-Allow-Methods'),
+      'Access-Control-Allow-Headers': res.getHeader('Access-Control-Allow-Headers')
+    }
   });
 });
 
