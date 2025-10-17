@@ -48,24 +48,21 @@ router.get('/', auth, requirePermission('READ_USERS'), asyncHandler(async (req: 
     };
   }
 
-  // Obtener usuarios que coincidan con la búsqueda
+  // Obtener usuarios que coincidan con la búsqueda (activos e inactivos)
   const matchingUsers = await User.find(userQuery).select('_id');
   const userIds = matchingUsers.map(user => user._id);
 
-  // Construir query de empleados
-  let employeeQuery: any = { isActive: true };
-  if (userIds.length > 0) {
-    employeeQuery.user = { $in: userIds };
-  } else if (search) {
-    // Si hay búsqueda pero no coincidencias, no mostrar resultados
-    employeeQuery._id = { $exists: false };
-  }
+  // Construir query de empleados - solo empleados activos (independiente del usuario)
+  let employeeQuery: any = { 
+    isActive: true,
+    user: userIds.length > 0 ? { $in: userIds } : (search ? { $exists: false } : { $exists: true })
+  };
 
   const [employees, total] = await Promise.all([
     Employee.find(employeeQuery)
       .populate({
         path: 'user',
-        select: 'nombre apellido correo numeroCelular'
+        select: 'nombre apellido correo numeroCelular isActive'
       })
       .sort({ createdAt: -1 })
       .skip(skip)
@@ -73,16 +70,19 @@ router.get('/', auth, requirePermission('READ_USERS'), asyncHandler(async (req: 
     Employee.countDocuments(employeeQuery)
   ]);
 
-  const totalPages = Math.ceil(total / limit);
+  // Filtrar empleados que tienen usuario (por si el populate falló)
+  const filteredEmployees = employees.filter(emp => emp.user !== null);
+
+  const totalPages = Math.ceil(filteredEmployees.length / limit);
 
   res.json({
     success: true,
     data: {
-      data: employees,
+      data: filteredEmployees,
       pagination: {
         currentPage: page,
         totalPages,
-        totalItems: total,
+        totalItems: filteredEmployees.length,
         itemsPerPage: limit
       }
     }
@@ -139,10 +139,30 @@ router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE
   // Verificar si ya existe un empleado para este usuario
   const existingEmployee = await Employee.findOne({ user: userId });
   if (existingEmployee) {
-    return res.status(400).json({
-      success: false,
-      message: 'Ya existe un empleado para este usuario'
-    });
+    if (existingEmployee.isActive) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ya existe un empleado activo para este usuario'
+      });
+    } else {
+      // Reactivar empleado existente en lugar de crear uno nuevo
+      existingEmployee.isActive = true;
+      existingEmployee.salarioPorHora = salarioPorHora || existingEmployee.salarioPorHora;
+      await existingEmployee.save();
+
+      // Obtener empleado reactivado con datos del usuario poblados
+      const reactivatedEmployee = await Employee.findById(existingEmployee._id)
+        .populate({
+          path: 'user',
+          select: 'nombre apellido correo numeroCelular'
+        });
+
+      return res.status(200).json({
+        success: true,
+        message: 'Empleado reactivado exitosamente',
+        data: reactivatedEmployee
+      });
+    }
   }
 
   // Crear empleado

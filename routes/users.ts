@@ -3,6 +3,7 @@ import type { Request, Response } from 'express';
 import { body, validationResult, query } from 'express-validator';
 import User from '../models/User.js';
 import Role from '../models/Role.js';
+import Employee from '../models/Employee.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { auth, requirePermission } from '../middleware/auth.js';
 import type { AuthRequest } from '../middleware/auth.js';
@@ -432,9 +433,18 @@ router.patch('/:id/activate', auth, requirePermission('UPDATE_USERS'), activityL
     });
   }
 
+  // También reactivar empleado asociado si existe y está inactivo
+  const employee = await Employee.findOne({ user: user._id });
+  if (employee && !employee.isActive) {
+    employee.isActive = true;
+    await employee.save();
+  }
+
   res.json({
     success: true,
-    message: 'Usuario activado exitosamente',
+    message: employee 
+      ? 'Usuario y empleado activados exitosamente' 
+      : 'Usuario activado exitosamente',
     data: user
   });
 }));
@@ -462,6 +472,13 @@ router.patch('/:id/deactivate', auth, requirePermission('UPDATE_USERS'), activit
   user.isActive = false;
   await user.save();
 
+  // También desactivar empleado asociado si existe
+  const employee = await Employee.findOne({ user: user._id });
+  if (employee && employee.isActive) {
+    employee.isActive = false;
+    await employee.save();
+  }
+
   const updatedUser = await User.findById(user._id)
     .populate({
       path: 'role',
@@ -470,7 +487,9 @@ router.patch('/:id/deactivate', auth, requirePermission('UPDATE_USERS'), activit
 
   res.json({
     success: true,
-    message: 'Usuario desactivado exitosamente',
+    message: employee 
+      ? 'Usuario y empleado desactivados exitosamente' 
+      : 'Usuario desactivado exitosamente',
     data: updatedUser
   });
 }));
