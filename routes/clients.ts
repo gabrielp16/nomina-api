@@ -1,13 +1,19 @@
 import { Router, Request, Response } from 'express';
-import mongoose from 'mongoose';
+import mongoose, { HydratedDocument } from 'mongoose';
 import { body } from 'express-validator';
-import Client from '../models/Client.js';
+import Client, { IClient } from '../models/Client.js';
 import { auth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/auth.js';
 import { activityLogger } from '../middleware/activityLogger.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 
 const router = Router();
+
+// Helper para transformar documento a objeto con id
+const transformClientDoc = (client: HydratedDocument<IClient>) => ({
+  ...client.toObject(),
+  id: String(client._id)
+});
 
 // GET /api/clients - Obtener todos los clientes
 router.get('/', 
@@ -53,10 +59,7 @@ router.get('/',
 
     res.json({
       success: true,
-      data: clients.map(client => ({
-        ...client.toObject(),
-        id: client._id.toString()
-      })),
+      data: clients.map(transformClientDoc),
       pagination: {
         page: parseInt(page as string),
         limit: parseInt(limit as string),
@@ -96,7 +99,7 @@ router.get('/:id',
       success: true,
       data: {
         ...client.toObject(),
-        id: client._id.toString()
+        id: (client._id as mongoose.Types.ObjectId).toString()
       },
       message: 'Cliente obtenido exitosamente'
     });
@@ -175,7 +178,7 @@ router.post('/',
       message: 'Cliente creado exitosamente',
       data: {
         ...savedClient.toObject(),
-        id: savedClient._id.toString()
+        id: (savedClient._id as mongoose.Types.ObjectId).toString()
       }
     });
   })
@@ -249,12 +252,19 @@ router.put('/:id',
       { new: true, runValidators: true }
     );
 
+    if (!updatedClient) {
+      return res.status(404).json({
+        success: false,
+        error: 'Cliente no encontrado'
+      });
+    }
+
     res.json({
       success: true,
       message: 'Cliente actualizado exitosamente',
       data: {
-        ...updatedClient!.toObject(),
-        id: updatedClient!._id.toString()
+        ...updatedClient.toObject(),
+        id: (updatedClient._id as mongoose.Types.ObjectId).toString()
       }
     });
   })

@@ -78,7 +78,7 @@ OrderSchema.index({ estado: 1 });
 OrderSchema.index({ isActive: 1 });
 
 // Middleware para calcular el total automáticamente
-OrderSchema.pre('save', function(next) {
+OrderSchema.pre('save', function(this: IOrder, next) {
   if (this.isModified('cantidad') || this.isModified('precio')) {
     this.total = this.cantidad * this.precio;
   }

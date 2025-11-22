@@ -1,13 +1,19 @@
 import { Router, Request, Response } from 'express';
-import mongoose from 'mongoose';
+import mongoose, { HydratedDocument } from 'mongoose';
 import { body } from 'express-validator';
-import Product from '../models/Product.js';
+import Product, { IProduct } from '../models/Product.js';
 import { auth } from '../middleware/auth.js';
 import { requirePermission } from '../middleware/auth.js';
 import { activityLogger } from '../middleware/activityLogger.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 
 const router = Router();
+
+// Helper para transformar documento a objeto con id
+const transformProductDoc = (product: HydratedDocument<IProduct>) => ({
+  ...product.toObject(),
+  id: String(product._id)
+});
 
 // GET /api/products - Obtener todos los productos
 router.get('/', 
@@ -57,10 +63,7 @@ router.get('/',
 
     res.json({
       success: true,
-      data: products.map(product => ({
-        ...product.toObject(),
-        id: product._id.toString()
-      })),
+      data: products.map(transformProductDoc),
       pagination: {
         page: parseInt(page as string),
         limit: parseInt(limit as string),
@@ -100,7 +103,7 @@ router.get('/:id',
       success: true,
       data: {
         ...product.toObject(),
-        id: product._id.toString()
+        id: (product._id as mongoose.Types.ObjectId).toString()
       },
       message: 'Producto obtenido exitosamente'
     });
@@ -191,7 +194,7 @@ router.post('/',
       message: 'Producto creado exitosamente',
       data: {
         ...savedProduct.toObject(),
-        id: savedProduct._id.toString()
+        id: (savedProduct._id as mongoose.Types.ObjectId).toString()
       }
     });
   })
@@ -278,12 +281,19 @@ router.put('/:id',
       { new: true, runValidators: true }
     );
 
+    if (!updatedProduct) {
+      return res.status(404).json({
+        success: false,
+        error: 'Producto no encontrado'
+      });
+    }
+
     res.json({
       success: true,
       message: 'Producto actualizado exitosamente',
       data: {
-        ...updatedProduct!.toObject(),
-        id: updatedProduct!._id.toString()
+        ...updatedProduct.toObject(),
+        id: (updatedProduct._id as mongoose.Types.ObjectId).toString()
       }
     });
   })
