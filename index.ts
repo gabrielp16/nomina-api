@@ -16,6 +16,9 @@ import activityRoutes from './routes/activity.js';
 import dashboardRoutes from './routes/dashboard.js';
 import employeeRoutes from './routes/employees.js';
 import payrollRoutes from './routes/payroll.js';
+import orderRoutes from './routes/orders.js';
+import clientRoutes from './routes/clients.js';
+import productRoutes from './routes/products.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -266,6 +269,9 @@ app.use('/api/activity', apiLimiter, authLogger, activityRoutes);
 app.use('/api/dashboard', authLogger, dashboardRoutes); // Sin rate limiting adicional
 app.use('/api/employees', authLogger, employeeRoutes); // Sin rate limiting adicional  
 app.use('/api/payroll', authLogger, payrollRoutes); // Sin rate limiting adicional
+app.use('/api/orders', apiLimiter, authLogger, orderRoutes);
+app.use('/api/clients', apiLimiter, authLogger, clientRoutes);
+app.use('/api/products', apiLimiter, authLogger, productRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {

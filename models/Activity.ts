@@ -60,7 +60,27 @@ const ActivitySchema = new Schema<IActivity>({
       'EXPORT_DATA',
       'IMPORT_DATA',
       'SYSTEM_BACKUP',
-      'SYSTEM_RESTORE'
+      'SYSTEM_RESTORE',
+      'CREATE_ORDER',
+      'UPDATE_ORDER',
+      'DELETE_ORDER',
+      'LIST_ORDERS',
+      'Listar órdenes',
+      'Crear orden',
+      'Ver orden',
+      'Actualizar orden', 
+      'Eliminar orden',
+      'Ver estadísticas de órdenes',
+      'CREATE_CLIENT',
+      'UPDATE_CLIENT',
+      'DELETE_CLIENT',
+      'LIST_CLIENTS',
+      'Listar clientes',
+      'CREATE_PRODUCT',
+      'UPDATE_PRODUCT',
+      'DELETE_PRODUCT',
+      'LIST_PRODUCTS',
+      'Listar productos'
     ]
   },
   resource: {
@@ -77,7 +97,17 @@ const ActivitySchema = new Schema<IActivity>({
       'EMPLOYEE',
       'PAYROLL',
       'SYSTEM',
-      'DATA'
+      'DATA',
+      'ORDER',
+      'ORDERS',
+      'órdenes',
+      'ordenes',
+      'CLIENT',
+      'CLIENTS',
+      'clientes',
+      'PRODUCT',
+      'PRODUCTS',
+      'productos'
     ]
   },
   resourceId: {
