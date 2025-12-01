@@ -2,11 +2,10 @@ import mongoose, { Document, Schema } from 'mongoose';
 
 export interface IClient extends Document {
   nombre: string;
-  apellido: string;
   correo?: string;
   telefono?: string;
   direccion?: string;
-  empresa?: string;
+  nit?: string;
   activo: boolean;
   fechaCreacion: Date;
   fechaActualizacion: Date;
@@ -15,17 +14,10 @@ export interface IClient extends Document {
 const clientSchema = new Schema<IClient>({
   nombre: {
     type: String,
-    required: [true, 'El nombre es obligatorio'],
+    required: [true, 'El nombre del cliente es obligatorio'],
     trim: true,
     minlength: [2, 'El nombre debe tener al menos 2 caracteres'],
-    maxlength: [50, 'El nombre no puede exceder 50 caracteres']
-  },
-  apellido: {
-    type: String,
-    required: [true, 'El apellido es obligatorio'],
-    trim: true,
-    minlength: [2, 'El apellido debe tener al menos 2 caracteres'],
-    maxlength: [50, 'El apellido no puede exceder 50 caracteres']
+    maxlength: [100, 'El nombre no puede exceder 100 caracteres']
   },
   correo: {
     type: String,
@@ -44,10 +36,10 @@ const clientSchema = new Schema<IClient>({
     trim: true,
     maxlength: [200, 'La dirección no puede exceder 200 caracteres']
   },
-  empresa: {
+  nit: {
     type: String,
     trim: true,
-    maxlength: [100, 'El nombre de la empresa no puede exceder 100 caracteres']
+    maxlength: [20, 'El NIT no puede exceder 20 caracteres']
   },
   activo: {
     type: Boolean,
@@ -76,7 +68,8 @@ const clientSchema = new Schema<IClient>({
   }
 });
 
-clientSchema.index({ nombre: 1, apellido: 1 });
+clientSchema.index({ nombre: 1 });
+clientSchema.index({ nit: 1 }, { sparse: true });
 clientSchema.index({ correo: 1 }, { sparse: true });
 clientSchema.index({ activo: 1 });
 
@@ -85,10 +78,6 @@ clientSchema.pre('save', function(next) {
     this.fechaActualizacion = new Date();
   }
   next();
-});
-
-clientSchema.virtual('nombreCompleto').get(function() {
-  return `${this.nombre} ${this.apellido}`;
 });
 
 const Client = mongoose.model<IClient>('Client', clientSchema);

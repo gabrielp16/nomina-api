@@ -35,9 +35,9 @@ router.get('/',
       const searchRegex = new RegExp(search as string, 'i');
       filters.$or = [
         { nombre: searchRegex },
-        { apellido: searchRegex },
         { correo: searchRegex },
-        { empresa: searchRegex }
+        { nit: searchRegex },
+        { telefono: searchRegex }
       ];
     }
 
@@ -115,14 +115,8 @@ router.post('/',
       .trim()
       .notEmpty()
       .withMessage('El nombre es obligatorio')
-      .isLength({ min: 2, max: 50 })
-      .withMessage('El nombre debe tener entre 2 y 50 caracteres'),
-    body('apellido')
-      .trim()
-      .notEmpty()
-      .withMessage('El apellido es obligatorio')
-      .isLength({ min: 2, max: 50 })
-      .withMessage('El apellido debe tener entre 2 y 50 caracteres'),
+      .isLength({ min: 2, max: 100 })
+      .withMessage('El nombre debe tener entre 2 y 100 caracteres'),
     body('correo')
       .optional()
       .isEmail()
@@ -135,20 +129,19 @@ router.post('/',
       .optional()
       .isLength({ max: 200 })
       .withMessage('La dirección no puede exceder 200 caracteres'),
-    body('empresa')
+    body('nit')
       .optional()
-      .isLength({ max: 100 })
-      .withMessage('La empresa no puede exceder 100 caracteres')
+      .isLength({ max: 50 })
+      .withMessage('El NIT no puede exceder 50 caracteres')
   ],
   activityLogger('CREATE_CLIENT', 'CLIENT'),
   asyncHandler(async (req: Request, res: Response) => {
     const { 
       nombre, 
-      apellido, 
       correo, 
       telefono, 
       direccion, 
-      empresa 
+      nit 
     } = req.body;
 
     // Verificar si el correo ya existe (si se proporcionó)
@@ -164,11 +157,10 @@ router.post('/',
 
     const newClient = new Client({
       nombre,
-      apellido,
       correo,
       telefono,
       direccion,
-      empresa
+      nit
     });
 
     const savedClient = await newClient.save();
@@ -192,13 +184,8 @@ router.put('/:id',
     body('nombre')
       .optional()
       .trim()
-      .isLength({ min: 2, max: 50 })
-      .withMessage('El nombre debe tener entre 2 y 50 caracteres'),
-    body('apellido')
-      .optional()
-      .trim()
-      .isLength({ min: 2, max: 50 })
-      .withMessage('El apellido debe tener entre 2 y 50 caracteres'),
+      .isLength({ min: 2, max: 100 })
+      .withMessage('El nombre debe tener entre 2 y 100 caracteres'),
     body('correo')
       .optional()
       .isEmail()
@@ -211,10 +198,10 @@ router.put('/:id',
       .optional()
       .isLength({ max: 200 })
       .withMessage('La dirección no puede exceder 200 caracteres'),
-    body('empresa')
+    body('nit')
       .optional()
-      .isLength({ max: 100 })
-      .withMessage('La empresa no puede exceder 100 caracteres')
+      .isLength({ max: 50 })
+      .withMessage('El NIT no puede exceder 50 caracteres')
   ],
   activityLogger('UPDATE_CLIENT', 'CLIENT'),
   asyncHandler(async (req: Request, res: Response) => {
