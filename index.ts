@@ -19,6 +19,7 @@ import payrollRoutes from './routes/payroll.js';
 import orderRoutes from './routes/orders.js';
 import clientRoutes from './routes/clients.js';
 import productRoutes from './routes/products.js';
+import productPriceRoutes from './routes/productPrices.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -272,6 +273,7 @@ app.use('/api/payroll', authLogger, payrollRoutes); // Sin rate limiting adicion
 app.use('/api/orders', apiLimiter, authLogger, orderRoutes);
 app.use('/api/clients', apiLimiter, authLogger, clientRoutes);
 app.use('/api/products', apiLimiter, authLogger, productRoutes);
+app.use('/api/product-prices', apiLimiter, authLogger, productPriceRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
