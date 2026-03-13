@@ -3,6 +3,7 @@ import mongoose, { Document, Schema, Types } from 'mongoose';
 export interface IProduct extends Document {
   _id: Types.ObjectId;
   name: string;
+  productCode: string;
   description: string;
   active: boolean;
   price?: number;
@@ -17,6 +18,11 @@ const productSchema = new Schema<IProduct>(
       required: true,
       trim: true,
       maxlength: 100
+    },
+    productCode: {
+      type: String,
+      trim: true,
+      maxlength: 4
     },
     description: {
       type: String,
@@ -48,6 +54,7 @@ const productSchema = new Schema<IProduct>(
 );
 
 productSchema.index({ name: 1 });
+productSchema.index({ productCode: 1 });
 productSchema.index({ active: 1 });
 
 export default mongoose.model<IProduct>('Product', productSchema);

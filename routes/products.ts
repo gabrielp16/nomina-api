@@ -11,7 +11,7 @@ const router = express.Router();
 
 const listValidation = [
   query('page').optional().isInt({ min: 1 }).withMessage('La pagina debe ser mayor a 0'),
-  query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('El limite debe estar entre 1 y 100'),
+  query('limit').optional().isInt({ min: 1, max: 1000 }).withMessage('El limite debe estar entre 1 y 1000'),
   query('search').optional().isString().withMessage('La busqueda debe ser un texto')
 ];
 
@@ -21,6 +21,11 @@ const updateProductValidation = [
     .trim()
     .isLength({ min: 1, max: 100 })
     .withMessage('El nombre debe tener entre 1 y 100 caracteres'),
+  body('productCode')
+    .optional()
+    .trim()
+    .matches(/^[A-Za-z0-9]{4}$/)
+    .withMessage('El codigo de producto debe tener 4 caracteres (letras o numeros)'),
   body('description')
     .optional()
     .trim()
@@ -41,6 +46,10 @@ const createProductValidation = [
     .trim()
     .isLength({ min: 1, max: 100 })
     .withMessage('El nombre debe tener entre 1 y 100 caracteres'),
+  body('productCode')
+    .trim()
+    .matches(/^[A-Za-z0-9]{4}$/)
+    .withMessage('El codigo de producto debe tener 4 caracteres (letras o numeros)'),
   body('description')
     .trim()
     .isLength({ min: 1, max: 256 })
@@ -68,10 +77,11 @@ router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE
     });
   }
 
-  const { name, description, active, price } = req.body;
+  const { name, productCode, description, active, price } = req.body;
 
   const product = await Product.create({
     name,
+    productCode,
     description,
     active: active ?? true,
     price: price === null || price === undefined || price === '' ? undefined : Number(price)
@@ -106,6 +116,7 @@ router.get('/', auth, requirePermission('READ_USERS'), listValidation, asyncHand
   if (search) {
     filter.$or = [
       { name: { $regex: search, $options: 'i' } },
+      { productCode: { $regex: search, $options: 'i' } },
       { description: { $regex: search, $options: 'i' } }
     ];
   }
@@ -151,10 +162,14 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
     });
   }
 
-  const { name, description, active, price } = req.body;
+  const { name, productCode, description, active, price } = req.body;
 
   if (name !== undefined) {
     product.name = name;
+  }
+
+  if (productCode !== undefined) {
+    product.productCode = productCode;
   }
 
   if (description !== undefined) {

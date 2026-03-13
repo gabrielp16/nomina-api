@@ -18,6 +18,7 @@ import employeeRoutes from './routes/employees.js';
 import payrollRoutes from './routes/payroll.js';
 import productRoutes from './routes/products.js';
 import clientRoutes from './routes/clients.js';
+import inventoryRoutes from './routes/inventory.js';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler.js';
@@ -270,6 +271,7 @@ app.use('/api/employees', authLogger, employeeRoutes); // Sin rate limiting adic
 app.use('/api/payroll', authLogger, payrollRoutes); // Sin rate limiting adicional
 app.use('/api/products', apiLimiter, authLogger, productRoutes);
 app.use('/api/clients', apiLimiter, authLogger, clientRoutes);
+app.use('/api/inventory', apiLimiter, authLogger, inventoryRoutes);
 
 // 404 handler
 app.use('*', (req, res) => {
