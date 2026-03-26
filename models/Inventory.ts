@@ -20,7 +20,7 @@ const inventorySchema = new Schema<IInventory>(
     quantity: {
       type: Number,
       required: true,
-      min: 1
+      min: 0
     },
     lotNumber: {
       type: String,
