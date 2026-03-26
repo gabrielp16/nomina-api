@@ -1,12 +1,22 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export type ClientType = 'Persona Natural' | 'Persona Juridica';
+export type ClientPaymentType =
+  | '8 dias'
+  | '10 dias'
+  | '15 dias'
+  | '30 dias'
+  | '60 dias'
+  | '90 dias'
+  | 'Efectivo'
+  | 'Transferencia';
 
 export interface IClient extends Document {
   _id: Types.ObjectId;
   name: string;
   category: string;
   type: ClientType;
+  paymentType: ClientPaymentType;
   documentNumber: string;
   address: string;
   city: string;
@@ -35,6 +45,21 @@ const clientSchema = new Schema<IClient>(
       type: String,
       required: true,
       enum: ['Persona Natural', 'Persona Juridica']
+    },
+    paymentType: {
+      type: String,
+      required: true,
+      enum: [
+        '8 dias',
+        '10 dias',
+        '15 dias',
+        '30 dias',
+        '60 dias',
+        '90 dias',
+        'Efectivo',
+        'Transferencia'
+      ],
+      default: 'Efectivo'
     },
     documentNumber: {
       type: String,
@@ -87,6 +112,7 @@ const clientSchema = new Schema<IClient>(
 
 clientSchema.index({ name: 1 });
 clientSchema.index({ category: 1 });
+clientSchema.index({ paymentType: 1 });
 clientSchema.index({ documentNumber: 1 });
 clientSchema.index({ email: 1 });
 clientSchema.index({ active: 1 });

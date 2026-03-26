@@ -11,6 +11,17 @@ import { activityLogger } from '../middleware/activityLogger.js';
 
 const router = express.Router();
 
+const paymentTypeValues = [
+  '8 dias',
+  '10 dias',
+  '15 dias',
+  '30 dias',
+  '60 dias',
+  '90 dias',
+  'Efectivo',
+  'Transferencia'
+];
+
 const listValidation = [
   query('page').optional().isInt({ min: 1 }).withMessage('La pagina debe ser mayor a 0'),
   query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('El limite debe estar entre 1 y 100'),
@@ -23,6 +34,7 @@ const updateClientValidation = [
   body('name').optional().trim().isLength({ min: 1, max: 100 }).withMessage('La razon social debe tener entre 1 y 100 caracteres'),
   body('category').optional().trim().isLength({ min: 1, max: 50 }).withMessage('La categoria debe tener entre 1 y 50 caracteres'),
   body('type').optional().isIn(['Persona Natural', 'Persona Juridica']).withMessage('El tipo debe ser Persona Natural o Persona Juridica'),
+  body('paymentType').optional().isIn(paymentTypeValues).withMessage('El tipo de pago no es valido'),
   body('documentNumber').optional().trim().isLength({ min: 1, max: 20 }).withMessage('El NIT debe tener entre 1 y 20 caracteres'),
   body('address').optional().trim().isLength({ min: 1, max: 256 }).withMessage('La direccion debe tener entre 1 y 256 caracteres'),
   body('city').optional().trim().isLength({ min: 1, max: 50 }).withMessage('La ciudad debe tener entre 1 y 50 caracteres'),
@@ -35,6 +47,7 @@ const createClientValidation = [
   body('name').trim().isLength({ min: 1, max: 100 }).withMessage('La razon social debe tener entre 1 y 100 caracteres'),
   body('category').trim().isLength({ min: 1, max: 50 }).withMessage('La categoria debe tener entre 1 y 50 caracteres'),
   body('type').isIn(['Persona Natural', 'Persona Juridica']).withMessage('El tipo debe ser Persona Natural o Persona Juridica'),
+  body('paymentType').isIn(paymentTypeValues).withMessage('El tipo de pago no es valido'),
   body('documentNumber').trim().isLength({ min: 1, max: 20 }).withMessage('El NIT debe tener entre 1 y 20 caracteres'),
   body('address').trim().isLength({ min: 1, max: 256 }).withMessage('La direccion debe tener entre 1 y 256 caracteres'),
   body('city').trim().isLength({ min: 1, max: 50 }).withMessage('La ciudad debe tener entre 1 y 50 caracteres'),
@@ -194,7 +207,7 @@ router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE
     });
   }
 
-  const { name, category, type, documentNumber, address, city, phone, email, active } = req.body;
+  const { name, category, type, paymentType, documentNumber, address, city, phone, email, active } = req.body;
 
   const clientCategory = await ClientCategory.findOne({ name: category });
   if (!clientCategory) {
@@ -208,6 +221,7 @@ router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE
     name,
     category,
     type,
+    paymentType,
     documentNumber,
     address,
     city,
@@ -253,6 +267,7 @@ router.get('/', auth, requirePermission('READ_USERS'), listValidation, asyncHand
       { name: { $regex: search, $options: 'i' } },
       { category: { $regex: search, $options: 'i' } },
       { type: { $regex: search, $options: 'i' } },
+      { paymentType: { $regex: search, $options: 'i' } },
       { documentNumber: { $regex: search, $options: 'i' } },
       { city: { $regex: search, $options: 'i' } },
       { email: { $regex: search, $options: 'i' } }
@@ -311,7 +326,7 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
     });
   }
 
-  const { name, category, type, documentNumber, address, city, phone, email, active } = req.body;
+  const { name, category, type, paymentType, documentNumber, address, city, phone, email, active } = req.body;
 
   if (category !== undefined) {
     const clientCategory = await ClientCategory.findOne({ name: category });
@@ -326,6 +341,7 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
   if (name !== undefined) client.name = name;
   if (category !== undefined) client.category = category;
   if (type !== undefined) client.type = type;
+  if (paymentType !== undefined) client.paymentType = paymentType;
   if (documentNumber !== undefined) client.documentNumber = documentNumber;
   if (address !== undefined) client.address = address;
   if (city !== undefined) client.city = city;
