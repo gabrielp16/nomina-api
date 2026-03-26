@@ -9,6 +9,8 @@ import { activityLogger } from '../middleware/activityLogger.js';
 
 const router = express.Router();
 
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
 const listValidation = [
   query('page').optional().isInt({ min: 1 }).withMessage('La pagina debe ser mayor a 0'),
   query('limit').optional().isInt({ min: 1, max: 1000 }).withMessage('El limite debe estar entre 1 y 1000'),
@@ -93,10 +95,24 @@ router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE
 
   const { name, productCode, barcode, description, active, price } = req.body;
 
+  const normalizedBarcode = typeof barcode === 'string' ? barcode.trim() : '';
+
+  if (normalizedBarcode) {
+    const existingProduct = await Product.findOne({
+      barcode: { $regex: `^${escapeRegex(normalizedBarcode)}$`, $options: 'i' },
+    });
+    if (existingProduct) {
+      return res.status(400).json({
+        success: false,
+        message: 'Ya existe un producto con ese codigo de barras'
+      });
+    }
+  }
+
   const product = await Product.create({
     name,
     productCode,
-    barcode: barcode === null || barcode === undefined || barcode === '' ? undefined : barcode,
+    barcode: normalizedBarcode || undefined,
     description,
     active: active ?? true,
     price: price === null || price === undefined || price === '' ? undefined : Number(price)
@@ -180,6 +196,8 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
 
   const { name, productCode, barcode, description, active, price } = req.body;
 
+  const normalizedBarcode = typeof barcode === 'string' ? barcode.trim() : barcode;
+
   if (name !== undefined) {
     product.name = name;
   }
@@ -189,7 +207,21 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
   }
 
   if (barcode !== undefined) {
-    product.barcode = barcode === null || barcode === '' ? undefined : barcode;
+    if (normalizedBarcode) {
+      const existingProduct = await Product.findOne({
+        barcode: { $regex: `^${escapeRegex(normalizedBarcode)}$`, $options: 'i' },
+        _id: { $ne: product._id },
+      });
+
+      if (existingProduct) {
+        return res.status(400).json({
+          success: false,
+          message: 'Ya existe otro producto con ese codigo de barras'
+        });
+      }
+    }
+
+    product.barcode = normalizedBarcode === null || normalizedBarcode === '' ? undefined : normalizedBarcode;
   }
 
   if (description !== undefined) {

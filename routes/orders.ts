@@ -152,7 +152,7 @@ const buildOrderItems = async (
 router.get('/options', auth, requirePermission('READ_PAYROLL'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   const [clients, products, inventory] = await Promise.all([
     Client.find({ active: true }).select('name').sort({ name: 1 }),
-    Product.find({ active: true }).select('name productCode price').sort({ name: 1 }),
+    Product.find({ active: true }).select('name productCode barcode price').sort({ name: 1 }),
     Inventory.find({ quantity: { $gte: 0 } })
       .select('product lotNumber quantity expirationDate')
       .sort({ createdAt: -1 }),
@@ -192,6 +192,7 @@ router.get('/', auth, requirePermission('READ_PAYROLL'), listValidation, asyncHa
         $or: [
           { name: { $regex: search, $options: 'i' } },
           { productCode: { $regex: search, $options: 'i' } },
+          { barcode: { $regex: search, $options: 'i' } },
         ],
       }).select('_id'),
     ]);

@@ -86,7 +86,8 @@ router.get('/', auth, requirePermission('READ_PAYROLL'), listValidation, asyncHa
     const matchingProducts = await Product.find({
       $or: [
         { name: { $regex: search, $options: 'i' } },
-        { productCode: { $regex: search, $options: 'i' } }
+        { productCode: { $regex: search, $options: 'i' } },
+        { barcode: { $regex: search, $options: 'i' } }
       ]
     }).select('_id');
 
