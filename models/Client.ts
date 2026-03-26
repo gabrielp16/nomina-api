@@ -5,6 +5,7 @@ export type ClientType = 'Persona Natural' | 'Persona Juridica';
 export interface IClient extends Document {
   _id: Types.ObjectId;
   name: string;
+  category: string;
   type: ClientType;
   documentNumber: string;
   address: string;
@@ -23,6 +24,12 @@ const clientSchema = new Schema<IClient>(
       required: true,
       trim: true,
       maxlength: 100
+    },
+    category: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 50
     },
     type: {
       type: String,
@@ -79,6 +86,7 @@ const clientSchema = new Schema<IClient>(
 );
 
 clientSchema.index({ name: 1 });
+clientSchema.index({ category: 1 });
 clientSchema.index({ documentNumber: 1 });
 clientSchema.index({ email: 1 });
 clientSchema.index({ active: 1 });
