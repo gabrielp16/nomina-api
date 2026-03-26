@@ -26,6 +26,13 @@ const updateProductValidation = [
     .trim()
     .matches(/^[A-Za-z0-9]{4}$/)
     .withMessage('El codigo de producto debe tener 4 caracteres (letras o numeros)'),
+  body('barcode')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 64 })
+    .withMessage('El codigo de barras debe tener maximo 64 caracteres')
+    .matches(/^[A-Za-z0-9\-_.]*$/)
+    .withMessage('El codigo de barras solo puede contener letras, numeros, guion, guion bajo o punto'),
   body('description')
     .optional()
     .trim()
@@ -50,6 +57,13 @@ const createProductValidation = [
     .trim()
     .matches(/^[A-Za-z0-9]{4}$/)
     .withMessage('El codigo de producto debe tener 4 caracteres (letras o numeros)'),
+  body('barcode')
+    .optional({ nullable: true })
+    .trim()
+    .isLength({ max: 64 })
+    .withMessage('El codigo de barras debe tener maximo 64 caracteres')
+    .matches(/^[A-Za-z0-9\-_.]*$/)
+    .withMessage('El codigo de barras solo puede contener letras, numeros, guion, guion bajo o punto'),
   body('description')
     .trim()
     .isLength({ min: 1, max: 256 })
@@ -77,11 +91,12 @@ router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE
     });
   }
 
-  const { name, productCode, description, active, price } = req.body;
+  const { name, productCode, barcode, description, active, price } = req.body;
 
   const product = await Product.create({
     name,
     productCode,
+    barcode: barcode === null || barcode === undefined || barcode === '' ? undefined : barcode,
     description,
     active: active ?? true,
     price: price === null || price === undefined || price === '' ? undefined : Number(price)
@@ -117,6 +132,7 @@ router.get('/', auth, requirePermission('READ_USERS'), listValidation, asyncHand
     filter.$or = [
       { name: { $regex: search, $options: 'i' } },
       { productCode: { $regex: search, $options: 'i' } },
+      { barcode: { $regex: search, $options: 'i' } },
       { description: { $regex: search, $options: 'i' } }
     ];
   }
@@ -162,7 +178,7 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
     });
   }
 
-  const { name, productCode, description, active, price } = req.body;
+  const { name, productCode, barcode, description, active, price } = req.body;
 
   if (name !== undefined) {
     product.name = name;
@@ -170,6 +186,10 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
 
   if (productCode !== undefined) {
     product.productCode = productCode;
+  }
+
+  if (barcode !== undefined) {
+    product.barcode = barcode === null || barcode === '' ? undefined : barcode;
   }
 
   if (description !== undefined) {

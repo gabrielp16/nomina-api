@@ -4,6 +4,7 @@ export interface IProduct extends Document {
   _id: Types.ObjectId;
   name: string;
   productCode: string;
+  barcode?: string;
   description: string;
   active: boolean;
   price?: number;
@@ -23,6 +24,11 @@ const productSchema = new Schema<IProduct>(
       type: String,
       trim: true,
       maxlength: 4
+    },
+    barcode: {
+      type: String,
+      trim: true,
+      maxlength: 64
     },
     description: {
       type: String,
@@ -55,6 +61,7 @@ const productSchema = new Schema<IProduct>(
 
 productSchema.index({ name: 1 });
 productSchema.index({ productCode: 1 });
+productSchema.index({ barcode: 1 });
 productSchema.index({ active: 1 });
 
 export default mongoose.model<IProduct>('Product', productSchema);
