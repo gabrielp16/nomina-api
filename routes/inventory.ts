@@ -3,10 +3,16 @@ import type { Response } from 'express';
 import { body, query, validationResult } from 'express-validator';
 import Inventory from '../models/Inventory.js';
 import Product from '../models/Product.js';
+import { getProductionPackagingRule } from '../lib/productionInventoryRules.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { auth, requirePermission } from '../middleware/auth.js';
 import type { AuthRequest } from '../middleware/auth.js';
 import { activityLogger } from '../middleware/activityLogger.js';
+import {
+  createPackagedInventoryWithTraceability,
+  InventoryTransformationError,
+  revertPackagedInventoryTransformation,
+} from '../services/inventoryTransformationService';
 
 const router = express.Router();
 
@@ -149,23 +155,43 @@ router.post('/', auth, requirePermission('CREATE_PAYROLL'), activityLogger('CREA
     });
   }
 
-  const record = await Inventory.create({
-    product,
-    quantity,
-    lotNumber,
-    expirationDate
-  });
+  const normalizedLotNumber = lotNumber.trim().toUpperCase();
+  const existingLot = await Inventory.findOne({ lotNumber: normalizedLotNumber });
+  if (existingLot) {
+    return res.status(400).json({
+      success: false,
+      message: 'Ya existe un registro de inventario con ese numero de lote'
+    });
+  }
 
-  const created = await Inventory.findById(record._id).populate({
-    path: 'product',
-    select: 'name productCode active'
-  });
+  try {
+    const result = await createPackagedInventoryWithTraceability({
+      productId: product,
+      quantity: Number(quantity),
+      lotNumber: normalizedLotNumber,
+      expirationDate,
+      userId: req.user?._id?.toString(),
+    });
 
-  res.status(201).json({
-    success: true,
-    message: 'Registro de inventario creado exitosamente',
-    data: created
-  });
+    const message = result.transformed
+      ? `Registro de inventario creado exitosamente. Se descontaron ${result.consumedUnits} unidad(es) de ${result.baseProductName}.`
+      : 'Registro de inventario creado exitosamente';
+
+    res.status(201).json({
+      success: true,
+      message,
+      data: result.inventoryRecord,
+    });
+  } catch (error) {
+    if (error instanceof InventoryTransformationError) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    throw error;
+  }
 }));
 
 router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UPDATE', 'INVENTORY'), updateInventoryValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -188,6 +214,16 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
 
   const { product, quantity, lotNumber, expirationDate } = req.body;
 
+  const originalProduct = await Product.findById(record.product);
+  if (!originalProduct) {
+    return res.status(400).json({
+      success: false,
+      message: 'El producto original del registro no existe'
+    });
+  }
+
+  const originalQuantity = record.quantity;
+
   let resolvedProduct: any = null;
 
   if (product !== undefined) {
@@ -202,7 +238,7 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
   }
 
   if (quantity !== undefined) {
-    record.quantity = quantity;
+    record.quantity = Number(quantity);
   }
 
   if (lotNumber !== undefined) {
@@ -224,7 +260,181 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
     }
   }
 
-  await record.save();
+  const originalRule = getProductionPackagingRule(
+    originalProduct.productCode || originalProduct.name,
+  );
+  const finalRule = getProductionPackagingRule(
+    finalProduct?.productCode || finalProduct?.name,
+  );
+
+  const isSamePackagedRule =
+    !!originalRule &&
+    !!finalRule &&
+    originalRule.packagedProductName === finalRule.packagedProductName;
+
+  const sourceRollbackMap = new Map<string, number>();
+  const rememberSourceSnapshot = (sourceId: string, previousQuantity: number) => {
+    if (!sourceRollbackMap.has(sourceId)) {
+      sourceRollbackMap.set(sourceId, previousQuantity);
+    }
+  };
+
+  const originalTransformationSources = (record.transformationSources || []).map((source) => ({
+    inventoryId: source.inventoryId,
+    lotNumber: source.lotNumber,
+    quantity: source.quantity,
+  }));
+
+  try {
+    let restorationUnits = 0;
+
+    if (originalRule) {
+      if (isSamePackagedRule) {
+        restorationUnits = Math.max(0, originalQuantity - record.quantity) * originalRule.unitsPerPackage;
+      } else {
+        restorationUnits = originalQuantity * originalRule.unitsPerPackage;
+      }
+    }
+
+    if (restorationUnits > 0) {
+      const currentSources = [...(record.transformationSources || [])];
+      let pendingRestoreUnits = restorationUnits;
+
+      for (let index = currentSources.length - 1; index >= 0 && pendingRestoreUnits > 0; index -= 1) {
+        const source = currentSources[index];
+        const sourceLot = await Inventory.findById(source.inventoryId);
+
+        if (!sourceLot) {
+          throw new InventoryTransformationError(
+            `No se encontro el lote origen ${source.lotNumber} para restaurar la transformacion`,
+          );
+        }
+
+        rememberSourceSnapshot(sourceLot._id.toString(), sourceLot.quantity);
+
+        const unitsToRestore = Math.min(source.quantity, pendingRestoreUnits);
+        sourceLot.quantity += unitsToRestore;
+        await sourceLot.save();
+
+        source.quantity -= unitsToRestore;
+        pendingRestoreUnits -= unitsToRestore;
+      }
+
+      if (pendingRestoreUnits > 0) {
+        throw new InventoryTransformationError(
+          'No existe trazabilidad suficiente para restaurar la reduccion del producto empaquetado',
+        );
+      }
+
+      record.transformationSources = currentSources.filter((source) => source.quantity > 0);
+    }
+
+    let packagedUnitsToConsume = 0;
+    if (finalRule) {
+      if (isSamePackagedRule) {
+        packagedUnitsToConsume = Math.max(0, record.quantity - originalQuantity);
+      } else {
+        packagedUnitsToConsume = record.quantity;
+      }
+    }
+
+    if (finalRule && packagedUnitsToConsume > 0) {
+      const baseProduct = await Product.findOne({
+        $or: [
+          { name: finalRule.baseProductName },
+          ...(finalRule.baseProductCode
+            ? [{ productCode: finalRule.baseProductCode }]
+            : []),
+        ],
+      });
+
+      if (!baseProduct) {
+        throw new InventoryTransformationError(
+          `No se encontro el producto base ${finalRule.baseProductCode || finalRule.baseProductName} para actualizar ${finalRule.packagedProductName}`,
+        );
+      }
+
+      const sourceRecords = await Inventory.find({
+        product: baseProduct._id,
+        quantity: { $gt: 0 },
+      }).sort({ createdAt: 1, _id: 1 });
+
+      const availableUnits = sourceRecords.reduce(
+        (total, sourceRecord) => total + sourceRecord.quantity,
+        0,
+      );
+      const requiredUnits = packagedUnitsToConsume * finalRule.unitsPerPackage;
+
+      if (availableUnits < requiredUnits) {
+        throw new InventoryTransformationError(
+          `No hay existencias suficientes para actualizar a ${record.quantity} unidad(es) de ${finalRule.packagedProductName}. Se requieren ${requiredUnits} unidad(es) adicionales de ${finalRule.baseProductName} y solo hay ${availableUnits} disponibles.`,
+        );
+      }
+
+      let pendingUnits = requiredUnits;
+      const sourceUsageMap = new Map<string, { inventoryId: any; lotNumber: string; quantity: number }>();
+
+      for (const source of record.transformationSources || []) {
+        sourceUsageMap.set(source.inventoryId.toString(), {
+          inventoryId: source.inventoryId,
+          lotNumber: source.lotNumber,
+          quantity: source.quantity,
+        });
+      }
+
+      for (const sourceRecord of sourceRecords) {
+        if (pendingUnits <= 0) {
+          break;
+        }
+
+        const unitsToDiscount = Math.min(sourceRecord.quantity, pendingUnits);
+        if (unitsToDiscount <= 0) {
+          continue;
+        }
+
+        rememberSourceSnapshot(sourceRecord._id.toString(), sourceRecord.quantity);
+
+        sourceRecord.quantity -= unitsToDiscount;
+        await sourceRecord.save();
+
+        const existingUsage = sourceUsageMap.get(sourceRecord._id.toString());
+        if (existingUsage) {
+          existingUsage.quantity += unitsToDiscount;
+        } else {
+          sourceUsageMap.set(sourceRecord._id.toString(), {
+            inventoryId: sourceRecord._id,
+            lotNumber: sourceRecord.lotNumber,
+            quantity: unitsToDiscount,
+          });
+        }
+
+        pendingUnits -= unitsToDiscount;
+      }
+
+      record.transformationSources = Array.from(sourceUsageMap.values()).filter((source) => source.quantity > 0);
+    }
+
+    await record.save();
+  } catch (error) {
+    for (const [sourceId, previousQuantity] of Array.from(sourceRollbackMap.entries()).reverse()) {
+      const sourceRecord = await Inventory.findById(sourceId);
+      if (sourceRecord) {
+        sourceRecord.quantity = previousQuantity;
+        await sourceRecord.save();
+      }
+    }
+
+    record.transformationSources = originalTransformationSources;
+
+    if (error instanceof InventoryTransformationError) {
+      return res.status(400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    throw error;
+  }
 
   const updated = await Inventory.findById(record._id).populate({
     path: 'product',
@@ -239,21 +449,24 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
 }));
 
 router.delete('/:id', auth, requirePermission('DELETE_PAYROLL'), activityLogger('DELETE', 'INVENTORY'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const record = await Inventory.findById(req.params.id);
-
-  if (!record) {
-    return res.status(404).json({
-      success: false,
-      message: 'Registro no encontrado'
+  try {
+    const result = await revertPackagedInventoryTransformation({
+      inventoryId: req.params.id,
+      userId: req.user?._id?.toString(),
     });
+
+    res.json(result);
+  } catch (error) {
+    if (error instanceof InventoryTransformationError) {
+      const isNotFoundError = /no encontrado/i.test(error.message);
+      return res.status(isNotFoundError ? 404 : 400).json({
+        success: false,
+        message: error.message,
+      });
+    }
+
+    throw error;
   }
-
-  await Inventory.findByIdAndDelete(req.params.id);
-
-  res.json({
-    success: true,
-    message: 'Registro eliminado exitosamente'
-  });
 }));
 
 export default router;

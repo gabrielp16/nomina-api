@@ -6,9 +6,38 @@ export interface IInventory extends Document {
   quantity: number;
   lotNumber: string;
   expirationDate: string;
+  transformationSources?: {
+    inventoryId: Types.ObjectId;
+    lotNumber: string;
+    quantity: number;
+  }[];
   createdAt: Date;
   updatedAt: Date;
 }
+
+const transformationSourceSchema = new Schema(
+  {
+    inventoryId: {
+      type: Schema.Types.ObjectId,
+      ref: 'Inventory',
+      required: true,
+    },
+    lotNumber: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 32,
+    },
+    quantity: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+  },
+  {
+    _id: false,
+  },
+);
 
 const inventorySchema = new Schema<IInventory>(
   {
@@ -33,6 +62,10 @@ const inventorySchema = new Schema<IInventory>(
       type: String,
       required: true,
       trim: true
+    },
+    transformationSources: {
+      type: [transformationSourceSchema],
+      default: [],
     }
   },
   {

@@ -27,6 +27,39 @@ type InventoryAdjustment = {
   quantity: number;
 };
 
+const formatDate = (date: Date) => {
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  return `${year}/${month}/${day}`;
+};
+
+const addMonths = (date: Date, months: number) => {
+  const result = new Date(date);
+  result.setUTCMonth(result.getUTCMonth() + months);
+  return result;
+};
+
+const inferExpirationDateFromLot = (lotNumber: string) => {
+  const normalizedLot = lotNumber.trim().toUpperCase();
+  const rawDate = normalizedLot.slice(0, 8);
+
+  if (!/^\d{8}$/.test(rawDate)) {
+    return formatDate(addMonths(new Date(), 6));
+  }
+
+  const year = Number(rawDate.slice(0, 4));
+  const month = Number(rawDate.slice(4, 6));
+  const day = Number(rawDate.slice(6, 8));
+  const productionDate = new Date(Date.UTC(year, month - 1, day));
+
+  if (Number.isNaN(productionDate.getTime())) {
+    return formatDate(addMonths(new Date(), 6));
+  }
+
+  return formatDate(addMonths(productionDate, 6));
+};
+
 const listValidation = [
   query('page').optional().isInt({ min: 1 }).withMessage('La pagina debe ser mayor a 0'),
   query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('El limite debe estar entre 1 y 100'),
@@ -78,18 +111,40 @@ const mapAdjustments = (items: IncomingOrderItem[]): InventoryAdjustment[] => {
 const applyInventoryAdjustment = async (
   adjustments: InventoryAdjustment[],
   operation: 'decrease' | 'increase',
-): Promise<{ success: true } | { success: false; message: string }> => {
+): Promise<
+  | {
+      success: true;
+      depletedLotCount: number;
+      recreatedLotCount: number;
+    }
+  | { success: false; message: string }
+> => {
+  const depletedRecordIds: string[] = [];
+  let recreatedLotCount = 0;
+
   for (const adjustment of adjustments) {
-    const inventoryRecord = await Inventory.findOne({
+    const normalizedLotNumber = adjustment.lotNumber.trim().toUpperCase();
+
+    let inventoryRecord = await Inventory.findOne({
       product: adjustment.productId,
-      lotNumber: adjustment.lotNumber,
+      lotNumber: normalizedLotNumber,
     });
 
     if (!inventoryRecord) {
-      return {
-        success: false,
-        message: `No existe inventario para el lote ${adjustment.lotNumber}`,
-      };
+      if (operation === 'increase') {
+        inventoryRecord = await Inventory.create({
+          product: adjustment.productId,
+          lotNumber: normalizedLotNumber,
+          quantity: 0,
+          expirationDate: inferExpirationDateFromLot(normalizedLotNumber),
+        });
+        recreatedLotCount += 1;
+      } else {
+        return {
+          success: false,
+          message: `No existe inventario para el lote ${adjustment.lotNumber}`,
+        };
+      }
     }
 
     if (operation === 'decrease') {
@@ -100,6 +155,10 @@ const applyInventoryAdjustment = async (
         };
       }
       inventoryRecord.quantity -= adjustment.quantity;
+
+      if (inventoryRecord.quantity === 0) {
+        depletedRecordIds.push(inventoryRecord._id.toString());
+      }
     } else {
       inventoryRecord.quantity += adjustment.quantity;
     }
@@ -107,7 +166,45 @@ const applyInventoryAdjustment = async (
     await inventoryRecord.save();
   }
 
-  return { success: true };
+  if (operation === 'decrease' && depletedRecordIds.length > 0) {
+    await Inventory.deleteMany({
+      _id: { $in: depletedRecordIds },
+      quantity: 0,
+    });
+  }
+
+  return {
+    success: true,
+    depletedLotCount: depletedRecordIds.length,
+    recreatedLotCount,
+  };
+};
+
+const applyInventoryAdjustmentOrRollback = async (
+  adjustmentToApply: InventoryAdjustment[],
+  operation: 'decrease' | 'increase',
+  rollbackAdjustments?: InventoryAdjustment[],
+): Promise<
+  | {
+      success: true;
+      depletedLotCount: number;
+      recreatedLotCount: number;
+    }
+  | { success: false; message: string }
+> => {
+  const adjustmentResult = await applyInventoryAdjustment(
+    adjustmentToApply,
+    operation,
+  );
+
+  if (!adjustmentResult.success && rollbackAdjustments) {
+    await applyInventoryAdjustment(
+      rollbackAdjustments,
+      operation === 'decrease' ? 'increase' : 'decrease',
+    );
+  }
+
+  return adjustmentResult;
 };
 
 const buildOrderItems = async (
@@ -288,7 +385,10 @@ router.post('/', auth, requirePermission('CREATE_PAYROLL'), activityLogger('CREA
 
   res.status(201).json({
     success: true,
-    message: 'Orden de compra creada exitosamente',
+    message:
+      deductionResult.depletedLotCount > 0
+        ? `Orden de compra creada exitosamente. Se eliminaron ${deductionResult.depletedLotCount} lote(s) de inventario por quedar en 0.`
+        : 'Orden de compra creada exitosamente',
     data: created,
   });
 }));
@@ -345,7 +445,7 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
 
   const mappedOrder = await buildOrderItems(items);
   if (!mappedOrder.success) {
-    await applyInventoryAdjustment(restoreAdjustments, 'decrease');
+    await applyInventoryAdjustmentOrRollback(restoreAdjustments, 'decrease');
     return res.status(400).json({
       success: false,
       message: mappedOrder.message,
@@ -353,10 +453,13 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
   }
 
   const newDeductions = mapAdjustments(items);
-  const deductionResult = await applyInventoryAdjustment(newDeductions, 'decrease');
+  const deductionResult = await applyInventoryAdjustmentOrRollback(
+    newDeductions,
+    'decrease',
+    restoreAdjustments,
+  );
 
   if (!deductionResult.success) {
-    await applyInventoryAdjustment(restoreAdjustments, 'decrease');
     return res.status(400).json({
       success: false,
       message: deductionResult.message,
@@ -377,7 +480,10 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
 
   res.json({
     success: true,
-    message: 'Orden de compra actualizada exitosamente',
+    message:
+      deductionResult.depletedLotCount > 0
+        ? `Orden de compra actualizada exitosamente. Se eliminaron ${deductionResult.depletedLotCount} lote(s) de inventario por quedar en 0.`
+        : 'Orden de compra actualizada exitosamente',
     data: updated,
   });
 }));
