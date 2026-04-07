@@ -5,6 +5,7 @@ import Order from '../models/Order.js';
 import Client from '../models/Client.js';
 import Product from '../models/Product.js';
 import Inventory from '../models/Inventory.js';
+import InventoryMovement from '../models/InventoryMovement.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { auth, requirePermission } from '../middleware/auth.js';
 import type { AuthRequest } from '../middleware/auth.js';
@@ -27,38 +28,39 @@ type InventoryAdjustment = {
   quantity: number;
 };
 
-const formatDate = (date: Date) => {
-  const year = date.getUTCFullYear();
-  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
-  const day = String(date.getUTCDate()).padStart(2, '0');
-  return `${year}/${month}/${day}`;
+type InventorySnapshot = {
+  inventoryId: string;
+  previousQuantity: number;
 };
 
-const addMonths = (date: Date, months: number) => {
-  const result = new Date(date);
-  result.setUTCMonth(result.getUTCMonth() + months);
-  return result;
+type InventoryMovementDraft = {
+  movementType: 'IN' | 'OUT';
+  reason: string;
+  product: string;
+  lotNumber: string;
+  quantity: number;
+  sourceLots: Array<{
+    inventoryId: string;
+    productId: string;
+    lotNumber: string;
+    quantity: number;
+  }>;
+  targetLots: Array<{
+    inventoryId: string;
+    productId: string;
+    lotNumber: string;
+    quantity: number;
+  }>;
+  referenceInventory: string;
 };
 
-const inferExpirationDateFromLot = (lotNumber: string) => {
-  const normalizedLot = lotNumber.trim().toUpperCase();
-  const rawDate = normalizedLot.slice(0, 8);
-
-  if (!/^\d{8}$/.test(rawDate)) {
-    return formatDate(addMonths(new Date(), 6));
-  }
-
-  const year = Number(rawDate.slice(0, 4));
-  const month = Number(rawDate.slice(4, 6));
-  const day = Number(rawDate.slice(6, 8));
-  const productionDate = new Date(Date.UTC(year, month - 1, day));
-
-  if (Number.isNaN(productionDate.getTime())) {
-    return formatDate(addMonths(new Date(), 6));
-  }
-
-  return formatDate(addMonths(productionDate, 6));
-};
+type InventoryAdjustmentResult =
+  | {
+      success: true;
+      snapshots: InventorySnapshot[];
+      movements: InventoryMovementDraft[];
+    }
+  | { success: false; message: string };
 
 const listValidation = [
   query('page').optional().isInt({ min: 1 }).withMessage('La pagina debe ser mayor a 0'),
@@ -111,40 +113,31 @@ const mapAdjustments = (items: IncomingOrderItem[]): InventoryAdjustment[] => {
 const applyInventoryAdjustment = async (
   adjustments: InventoryAdjustment[],
   operation: 'decrease' | 'increase',
-): Promise<
-  | {
-      success: true;
-      depletedLotCount: number;
-      recreatedLotCount: number;
-    }
-  | { success: false; message: string }
-> => {
-  const depletedRecordIds: string[] = [];
-  let recreatedLotCount = 0;
+  reason: string,
+): Promise<InventoryAdjustmentResult> => {
+  const snapshotMap = new Map<string, InventorySnapshot>();
+  const movements: InventoryMovementDraft[] = [];
 
   for (const adjustment of adjustments) {
     const normalizedLotNumber = adjustment.lotNumber.trim().toUpperCase();
 
-    let inventoryRecord = await Inventory.findOne({
+    const inventoryRecord = await Inventory.findOne({
       product: adjustment.productId,
       lotNumber: normalizedLotNumber,
     });
 
     if (!inventoryRecord) {
-      if (operation === 'increase') {
-        inventoryRecord = await Inventory.create({
-          product: adjustment.productId,
-          lotNumber: normalizedLotNumber,
-          quantity: 0,
-          expirationDate: inferExpirationDateFromLot(normalizedLotNumber),
-        });
-        recreatedLotCount += 1;
-      } else {
-        return {
-          success: false,
-          message: `No existe inventario para el lote ${adjustment.lotNumber}`,
-        };
-      }
+      return {
+        success: false,
+        message: `No existe inventario para el lote ${adjustment.lotNumber}`,
+      };
+    }
+
+    if (!snapshotMap.has(inventoryRecord._id.toString())) {
+      snapshotMap.set(inventoryRecord._id.toString(), {
+        inventoryId: inventoryRecord._id.toString(),
+        previousQuantity: inventoryRecord.quantity,
+      });
     }
 
     if (operation === 'decrease') {
@@ -154,57 +147,94 @@ const applyInventoryAdjustment = async (
           message: `Inventario insuficiente para el lote ${adjustment.lotNumber}. Disponible: ${inventoryRecord.quantity}, solicitado: ${adjustment.quantity}`,
         };
       }
+
       inventoryRecord.quantity -= adjustment.quantity;
 
-      if (inventoryRecord.quantity === 0) {
-        depletedRecordIds.push(inventoryRecord._id.toString());
-      }
+      movements.push({
+        movementType: 'OUT',
+        reason,
+        product: adjustment.productId,
+        lotNumber: normalizedLotNumber,
+        quantity: adjustment.quantity,
+        sourceLots: [
+          {
+            inventoryId: inventoryRecord._id.toString(),
+            productId: adjustment.productId,
+            lotNumber: normalizedLotNumber,
+            quantity: adjustment.quantity,
+          },
+        ],
+        targetLots: [],
+        referenceInventory: inventoryRecord._id.toString(),
+      });
     } else {
       inventoryRecord.quantity += adjustment.quantity;
+
+      movements.push({
+        movementType: 'IN',
+        reason,
+        product: adjustment.productId,
+        lotNumber: normalizedLotNumber,
+        quantity: adjustment.quantity,
+        sourceLots: [],
+        targetLots: [
+          {
+            inventoryId: inventoryRecord._id.toString(),
+            productId: adjustment.productId,
+            lotNumber: normalizedLotNumber,
+            quantity: adjustment.quantity,
+          },
+        ],
+        referenceInventory: inventoryRecord._id.toString(),
+      });
     }
 
     await inventoryRecord.save();
   }
 
-  if (operation === 'decrease' && depletedRecordIds.length > 0) {
-    await Inventory.deleteMany({
-      _id: { $in: depletedRecordIds },
-      quantity: 0,
-    });
-  }
-
   return {
     success: true,
-    depletedLotCount: depletedRecordIds.length,
-    recreatedLotCount,
+    snapshots: Array.from(snapshotMap.values()),
+    movements,
   };
 };
 
-const applyInventoryAdjustmentOrRollback = async (
-  adjustmentToApply: InventoryAdjustment[],
-  operation: 'decrease' | 'increase',
-  rollbackAdjustments?: InventoryAdjustment[],
-): Promise<
-  | {
-      success: true;
-      depletedLotCount: number;
-      recreatedLotCount: number;
+const rollbackInventorySnapshots = async (snapshots: InventorySnapshot[]) => {
+  for (const snapshot of [...snapshots].reverse()) {
+    const inventoryRecord = await Inventory.findById(snapshot.inventoryId);
+    if (inventoryRecord) {
+      inventoryRecord.quantity = snapshot.previousQuantity;
+      await inventoryRecord.save();
     }
-  | { success: false; message: string }
-> => {
-  const adjustmentResult = await applyInventoryAdjustment(
-    adjustmentToApply,
-    operation,
-  );
-
-  if (!adjustmentResult.success && rollbackAdjustments) {
-    await applyInventoryAdjustment(
-      rollbackAdjustments,
-      operation === 'decrease' ? 'increase' : 'decrease',
-    );
   }
+};
 
-  return adjustmentResult;
+const createInventoryMovements = async (
+  drafts: InventoryMovementDraft[],
+  metadata: Record<string, unknown>,
+) => {
+  const createdMovementIds: string[] = [];
+
+  try {
+    for (const draft of drafts) {
+      const movement = await InventoryMovement.create({
+        ...draft,
+        metadata: {
+          ...metadata,
+        },
+      });
+
+      createdMovementIds.push(movement._id.toString());
+    }
+
+    return createdMovementIds;
+  } catch (error) {
+    for (const movementId of createdMovementIds.reverse()) {
+      await InventoryMovement.findByIdAndDelete(movementId);
+    }
+
+    throw error;
+  }
 };
 
 const buildOrderItems = async (
@@ -363,7 +393,11 @@ router.post('/', auth, requirePermission('CREATE_PAYROLL'), activityLogger('CREA
   }
 
   const deductions = mapAdjustments(items);
-  const deductionResult = await applyInventoryAdjustment(deductions, 'decrease');
+  const deductionResult = await applyInventoryAdjustment(
+    deductions,
+    'decrease',
+    'ORDER_CREATED_OUT',
+  );
   if (!deductionResult.success) {
     return res.status(400).json({
       success: false,
@@ -371,26 +405,42 @@ router.post('/', auth, requirePermission('CREATE_PAYROLL'), activityLogger('CREA
     });
   }
 
-  const order = await Order.create({
-    date,
-    client,
-    status,
-    items: mappedOrder.items,
-    total: mappedOrder.total,
-  });
+  let createdOrderId: string | null = null;
 
-  const created = await Order.findById(order._id)
-    .populate({ path: 'client', select: 'name type documentNumber active' })
-    .populate({ path: 'items.product', select: 'name productCode price active' });
+  try {
+    const order = await Order.create({
+      date,
+      client,
+      status,
+      items: mappedOrder.items,
+      total: mappedOrder.total,
+    });
+    createdOrderId = order._id.toString();
 
-  res.status(201).json({
-    success: true,
-    message:
-      deductionResult.depletedLotCount > 0
-        ? `Orden de compra creada exitosamente. Se eliminaron ${deductionResult.depletedLotCount} lote(s) de inventario por quedar en 0.`
-        : 'Orden de compra creada exitosamente',
-    data: created,
-  });
+    await createInventoryMovements(deductionResult.movements, {
+      orderId: createdOrderId,
+      action: 'CREATE_ORDER',
+      createdBy: req.user?._id?.toString() || null,
+    });
+
+    const created = await Order.findById(order._id)
+      .populate({ path: 'client', select: 'name type documentNumber active' })
+      .populate({ path: 'items.product', select: 'name productCode price active' });
+
+    res.status(201).json({
+      success: true,
+      message: 'Orden de compra creada exitosamente',
+      data: created,
+    });
+  } catch (error) {
+    await rollbackInventorySnapshots(deductionResult.snapshots);
+
+    if (createdOrderId) {
+      await Order.findByIdAndDelete(createdOrderId);
+    }
+
+    throw error;
+  }
 }));
 
 router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UPDATE', 'ORDER'), orderItemValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -435,7 +485,11 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
     })),
   );
 
-  const restoreResult = await applyInventoryAdjustment(restoreAdjustments, 'increase');
+  const restoreResult = await applyInventoryAdjustment(
+    restoreAdjustments,
+    'increase',
+    'ORDER_UPDATED_RESTORE_PREVIOUS',
+  );
   if (!restoreResult.success) {
     return res.status(400).json({
       success: false,
@@ -445,7 +499,7 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
 
   const mappedOrder = await buildOrderItems(items);
   if (!mappedOrder.success) {
-    await applyInventoryAdjustmentOrRollback(restoreAdjustments, 'decrease');
+    await rollbackInventorySnapshots(restoreResult.snapshots);
     return res.status(400).json({
       success: false,
       message: mappedOrder.message,
@@ -453,18 +507,32 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
   }
 
   const newDeductions = mapAdjustments(items);
-  const deductionResult = await applyInventoryAdjustmentOrRollback(
+  const deductionResult = await applyInventoryAdjustment(
     newDeductions,
     'decrease',
-    restoreAdjustments,
+    'ORDER_UPDATED_OUT',
   );
 
   if (!deductionResult.success) {
+    await rollbackInventorySnapshots(restoreResult.snapshots);
     return res.status(400).json({
       success: false,
       message: deductionResult.message,
     });
   }
+
+  const originalDate = order.date;
+  const originalClient = order.client;
+  const originalStatus = order.status;
+  const originalItems = order.items.map((item) => ({
+    product: item.product,
+    billNumber: item.billNumber,
+    lotNumber: item.lotNumber,
+    quantity: item.quantity,
+    price: item.price,
+    subtotal: item.subtotal,
+  }));
+  const originalTotal = order.total;
 
   order.date = date;
   order.client = client as any;
@@ -472,20 +540,42 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
   order.items = mappedOrder.items as any;
   order.total = mappedOrder.total;
 
-  await order.save();
+  try {
+    await order.save();
 
-  const updated = await Order.findById(order._id)
-    .populate({ path: 'client', select: 'name type documentNumber active' })
-    .populate({ path: 'items.product', select: 'name productCode price active' });
+    await createInventoryMovements(
+      [...restoreResult.movements, ...deductionResult.movements],
+      {
+        orderId: order._id.toString(),
+        action: 'UPDATE_ORDER',
+        updatedBy: req.user?._id?.toString() || null,
+      },
+    );
 
-  res.json({
-    success: true,
-    message:
-      deductionResult.depletedLotCount > 0
-        ? `Orden de compra actualizada exitosamente. Se eliminaron ${deductionResult.depletedLotCount} lote(s) de inventario por quedar en 0.`
-        : 'Orden de compra actualizada exitosamente',
-    data: updated,
-  });
+    const updated = await Order.findById(order._id)
+      .populate({ path: 'client', select: 'name type documentNumber active' })
+      .populate({ path: 'items.product', select: 'name productCode price active' });
+
+    res.json({
+      success: true,
+      message: 'Orden de compra actualizada exitosamente',
+      data: updated,
+    });
+  } catch (error) {
+    await rollbackInventorySnapshots([
+      ...restoreResult.snapshots,
+      ...deductionResult.snapshots,
+    ]);
+
+    order.date = originalDate;
+    order.client = originalClient as any;
+    order.status = originalStatus;
+    order.items = originalItems as any;
+    order.total = originalTotal;
+    await order.save();
+
+    throw error;
+  }
 }));
 
 router.delete('/:id', auth, requirePermission('DELETE_PAYROLL'), activityLogger('DELETE', 'ORDER'), asyncHandler(async (req: AuthRequest, res: Response) => {
@@ -507,7 +597,11 @@ router.delete('/:id', auth, requirePermission('DELETE_PAYROLL'), activityLogger(
     })),
   );
 
-  const restoreResult = await applyInventoryAdjustment(restoreAdjustments, 'increase');
+  const restoreResult = await applyInventoryAdjustment(
+    restoreAdjustments,
+    'increase',
+    'ORDER_DELETED_RESTORE',
+  );
   if (!restoreResult.success) {
     return res.status(400).json({
       success: false,
@@ -515,12 +609,23 @@ router.delete('/:id', auth, requirePermission('DELETE_PAYROLL'), activityLogger(
     });
   }
 
-  await Order.findByIdAndDelete(req.params.id);
+  try {
+    await createInventoryMovements(restoreResult.movements, {
+      orderId: order._id.toString(),
+      action: 'DELETE_ORDER',
+      deletedBy: req.user?._id?.toString() || null,
+    });
 
-  res.json({
-    success: true,
-    message: 'Orden eliminada exitosamente',
-  });
+    await Order.findByIdAndDelete(req.params.id);
+
+    res.json({
+      success: true,
+      message: 'Orden eliminada exitosamente',
+    });
+  } catch (error) {
+    await rollbackInventorySnapshots(restoreResult.snapshots);
+    throw error;
+  }
 }));
 
 export default router;
