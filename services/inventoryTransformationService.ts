@@ -107,6 +107,10 @@ const getSourceLotsForFifo = async (baseProductId: Types.ObjectId, session: Opti
   return query;
 };
 
+const getAvailableInventoryUnits = (lot: { quantity: number; reservedQuantity?: number }) => {
+  return Math.max(0, lot.quantity - (lot.reservedQuantity || 0));
+};
+
 const allocateFifoLots = async (
   baseProductId: Types.ObjectId,
   requiredUnits: number,
@@ -114,7 +118,7 @@ const allocateFifoLots = async (
 ): Promise<SourceLotUsage[]> => {
   const sourceLots = await getSourceLotsForFifo(baseProductId, session);
 
-  const availableUnits = sourceLots.reduce((sum, lot) => sum + lot.quantity, 0);
+  const availableUnits = sourceLots.reduce((sum, lot) => sum + getAvailableInventoryUnits(lot), 0);
 
   if (availableUnits < requiredUnits) {
     throw new InventoryTransformationError(
@@ -130,7 +134,7 @@ const allocateFifoLots = async (
       break;
     }
 
-    const unitsToConsume = Math.min(lot.quantity, pendingUnits);
+    const unitsToConsume = Math.min(getAvailableInventoryUnits(lot), pendingUnits);
 
     if (unitsToConsume <= 0) {
       continue;
@@ -331,7 +335,7 @@ const runCreateWithoutTransaction = async (
 
     const requiredUnits = input.quantity * packagingRule.unitsPerPackage;
     const sourceLots = await getSourceLotsForFifo(baseProduct._id, null);
-    const availableUnits = sourceLots.reduce((sum, lot) => sum + lot.quantity, 0);
+    const availableUnits = sourceLots.reduce((sum, lot) => sum + getAvailableInventoryUnits(lot), 0);
 
     if (availableUnits < requiredUnits) {
       throw new InventoryTransformationError(
@@ -347,7 +351,7 @@ const runCreateWithoutTransaction = async (
         break;
       }
 
-      const unitsToConsume = Math.min(lot.quantity, pendingUnits);
+      const unitsToConsume = Math.min(getAvailableInventoryUnits(lot), pendingUnits);
       if (unitsToConsume <= 0) {
         continue;
       }
@@ -492,125 +496,8 @@ const runRevertWithSession = async (input: RevertInput, session: mongoose.Client
   );
 
   if (!packagingRule) {
-    await createMovementRecord(
-      {
-        movementType: 'OUT',
-        reason: 'MANUAL_STOCK_REMOVAL',
-        product: packagedProduct._id,
-        lotNumber: packagedRecord.lotNumber,
-        quantity: packagedRecord.quantity,
-        sourceLots: [
-          {
-            inventoryId: packagedRecord._id,
-            productId: packagedProduct._id,
-            lotNumber: packagedRecord.lotNumber,
-            quantity: packagedRecord.quantity,
-          },
-        ],
-        targetLots: [],
-        referenceInventory: packagedRecord._id,
-        metadata: {
-          removedBy: input.userId || null,
-        },
-      },
-      session,
-    );
-
-    await Inventory.findByIdAndDelete(packagedRecord._id).session(session);
-
-    return {
-      success: true as const,
-      message: resultMessage,
-    };
-  }
-
-  if (!packagedRecord.transformationSources || packagedRecord.transformationSources.length === 0) {
-    throw new InventoryTransformationError(
-      'No hay trazabilidad por lote para revertir este producto empaquetado',
-    );
-  }
-
-  const restoredLots: SourceLotUsage[] = [];
-
-  for (const source of packagedRecord.transformationSources) {
-    const sourceLot = await Inventory.findById(source.inventoryId).session(session);
-
-    if (!sourceLot) {
-      throw new InventoryTransformationError(
-        `No se encontro el lote origen ${source.lotNumber} para revertir la transformacion`,
-      );
-    }
-
-    sourceLot.quantity += source.quantity;
-    await saveWithOptionalSession(sourceLot, session);
-
-    restoredLots.push({
-      inventoryId: sourceLot._id,
-      productId: sourceLot.product as Types.ObjectId,
-      lotNumber: source.lotNumber,
-      quantity: source.quantity,
-    });
-  }
-
-  await createMovementRecord(
-    {
-      movementType: 'TRANSFORMATION',
-      reason: 'PACKAGED_PRODUCT_REVERTED',
-      product: packagedProduct._id,
-      lotNumber: packagedRecord.lotNumber,
-      quantity: packagedRecord.quantity,
-      sourceLots: [
-        {
-          inventoryId: packagedRecord._id,
-          productId: packagedProduct._id,
-          lotNumber: packagedRecord.lotNumber,
-          quantity: packagedRecord.quantity,
-        },
-      ],
-      targetLots: restoredLots,
-      referenceInventory: packagedRecord._id,
-      metadata: {
-        revertedBy: input.userId || null,
-        unitsPerPackage: packagingRule.unitsPerPackage,
-        restoredUnits: restoredLots.reduce((acc, lot) => acc + lot.quantity, 0),
-      },
-    },
-    session,
-  );
-
-  await Inventory.findByIdAndDelete(packagedRecord._id).session(session);
-
-  resultMessage = `Registro eliminado exitosamente. Se restauraron ${restoredLots.reduce((acc, lot) => acc + lot.quantity, 0)} unidad(es) a los mismos lotes origen.`;
-
-  return {
-    success: true as const,
-    message: resultMessage,
-  };
-};
-
-const runRevertWithoutTransaction = async (input: RevertInput) => {
-  let createdMovementId: Types.ObjectId | null = null;
-  const rollbackLots: Array<{ id: Types.ObjectId; previousQuantity: number }> = [];
-
-  try {
-    const packagedRecord = await Inventory.findById(input.inventoryId);
-
-    if (!packagedRecord) {
-      throw new InventoryTransformationError('Registro no encontrado');
-    }
-
-    const packagedProduct = await Product.findById(packagedRecord.product).select('name productCode');
-
-    if (!packagedProduct) {
-      throw new InventoryTransformationError('El producto del registro no existe');
-    }
-
-    const packagingRule = getProductionPackagingRule(
-      packagedProduct.productCode || packagedProduct.name,
-    );
-
-    if (!packagingRule) {
-      const movement = await createMovementRecord(
+    if (packagedRecord.quantity > 0) {
+      await createMovementRecord(
         {
           movementType: 'OUT',
           reason: 'MANUAL_STOCK_REMOVAL',
@@ -629,54 +516,73 @@ const runRevertWithoutTransaction = async (input: RevertInput) => {
           referenceInventory: packagedRecord._id,
           metadata: {
             removedBy: input.userId || null,
+            preservedLotReference: true,
           },
         },
-        null,
+        session,
       );
-
-      createdMovementId = movement._id;
-      await Inventory.findByIdAndDelete(packagedRecord._id);
-
-      return {
-        success: true as const,
-        message: 'Registro eliminado exitosamente',
-      };
     }
 
-    if (!packagedRecord.transformationSources || packagedRecord.transformationSources.length === 0) {
+    packagedRecord.quantity = 0;
+    await saveWithOptionalSession(packagedRecord, session);
+
+    return {
+      success: true as const,
+      message: resultMessage,
+    };
+  }
+
+  if (!packagedRecord.transformationSources || packagedRecord.transformationSources.length === 0) {
+    throw new InventoryTransformationError(
+      'No hay trazabilidad por lote para revertir este producto empaquetado',
+    );
+  }
+
+  const restoredLots: SourceLotUsage[] = [];
+  const currentSources = [...(packagedRecord.transformationSources || [])];
+  const unitsToRestore = packagedRecord.quantity * packagingRule.unitsPerPackage;
+  let pendingUnitsToRestore = unitsToRestore;
+
+  for (let index = currentSources.length - 1; index >= 0 && pendingUnitsToRestore > 0; index -= 1) {
+    const source = currentSources[index];
+    const sourceLot = await Inventory.findById(source.inventoryId).session(session);
+
+    if (!sourceLot) {
       throw new InventoryTransformationError(
-        'No hay trazabilidad por lote para revertir este producto empaquetado',
+        `No se encontro el lote origen ${source.lotNumber} para revertir la transformacion`,
       );
     }
 
-    const restoredLots: SourceLotUsage[] = [];
+    const unitsForSource = Math.min(source.quantity, pendingUnitsToRestore);
 
-    for (const source of packagedRecord.transformationSources) {
-      const sourceLot = await Inventory.findById(source.inventoryId);
-
-      if (!sourceLot) {
-        throw new InventoryTransformationError(
-          `No se encontro el lote origen ${source.lotNumber} para revertir la transformacion`,
-        );
-      }
-
-      rollbackLots.push({
-        id: sourceLot._id,
-        previousQuantity: sourceLot.quantity,
-      });
-
-      sourceLot.quantity += source.quantity;
-      await saveWithOptionalSession(sourceLot, null);
-
-      restoredLots.push({
-        inventoryId: sourceLot._id,
-        productId: sourceLot.product as Types.ObjectId,
-        lotNumber: source.lotNumber,
-        quantity: source.quantity,
-      });
+    if (unitsForSource <= 0) {
+      continue;
     }
 
-    const movement = await createMovementRecord(
+    sourceLot.quantity += unitsForSource;
+    await saveWithOptionalSession(sourceLot, session);
+
+    restoredLots.push({
+      inventoryId: sourceLot._id,
+      productId: sourceLot.product as Types.ObjectId,
+      lotNumber: source.lotNumber,
+      quantity: unitsForSource,
+    });
+
+    source.quantity -= unitsForSource;
+    pendingUnitsToRestore -= unitsForSource;
+  }
+
+  if (pendingUnitsToRestore > 0) {
+    throw new InventoryTransformationError(
+      'No hay trazabilidad suficiente para revertir las unidades empaquetadas disponibles',
+    );
+  }
+
+  const restoredUnits = restoredLots.reduce((acc, lot) => acc + lot.quantity, 0);
+
+  if (packagedRecord.quantity > 0) {
+    await createMovementRecord(
       {
         movementType: 'TRANSFORMATION',
         reason: 'PACKAGED_PRODUCT_REVERTED',
@@ -696,18 +602,200 @@ const runRevertWithoutTransaction = async (input: RevertInput) => {
         metadata: {
           revertedBy: input.userId || null,
           unitsPerPackage: packagingRule.unitsPerPackage,
-          restoredUnits: restoredLots.reduce((acc, lot) => acc + lot.quantity, 0),
+          restoredUnits,
+          preservedLotReference: true,
         },
       },
-      null,
+      session,
+    );
+  }
+
+  packagedRecord.quantity = 0;
+  packagedRecord.transformationSources = currentSources.filter((source) => source.quantity > 0);
+  await saveWithOptionalSession(packagedRecord, session);
+
+  resultMessage = restoredUnits > 0
+    ? `Registro eliminado exitosamente. Se restauraron ${restoredUnits} unidad(es) a los mismos lotes origen.`
+    : 'Registro eliminado exitosamente';
+
+  return {
+    success: true as const,
+    message: resultMessage,
+  };
+};
+
+const runRevertWithoutTransaction = async (input: RevertInput) => {
+  let createdMovementId: Types.ObjectId | null = null;
+  const rollbackLots: Array<{ id: Types.ObjectId; previousQuantity: number }> = [];
+  let packagedSnapshot: { previousQuantity: number; previousSources: IInventory['transformationSources'] } | null = null;
+
+  try {
+    const packagedRecord = await Inventory.findById(input.inventoryId);
+
+    if (!packagedRecord) {
+      throw new InventoryTransformationError('Registro no encontrado');
+    }
+
+    const packagedProduct = await Product.findById(packagedRecord.product).select('name productCode');
+
+    if (!packagedProduct) {
+      throw new InventoryTransformationError('El producto del registro no existe');
+    }
+
+    const packagingRule = getProductionPackagingRule(
+      packagedProduct.productCode || packagedProduct.name,
     );
 
-    createdMovementId = movement._id;
-    await Inventory.findByIdAndDelete(packagedRecord._id);
+    if (!packagingRule) {
+      packagedSnapshot = {
+        previousQuantity: packagedRecord.quantity,
+        previousSources: (packagedRecord.transformationSources || []).map((source) => ({
+          inventoryId: source.inventoryId,
+          lotNumber: source.lotNumber,
+          quantity: source.quantity,
+        })),
+      };
+
+      if (packagedRecord.quantity > 0) {
+        const movement = await createMovementRecord(
+          {
+            movementType: 'OUT',
+            reason: 'MANUAL_STOCK_REMOVAL',
+            product: packagedProduct._id,
+            lotNumber: packagedRecord.lotNumber,
+            quantity: packagedRecord.quantity,
+            sourceLots: [
+              {
+                inventoryId: packagedRecord._id,
+                productId: packagedProduct._id,
+                lotNumber: packagedRecord.lotNumber,
+                quantity: packagedRecord.quantity,
+              },
+            ],
+            targetLots: [],
+            referenceInventory: packagedRecord._id,
+            metadata: {
+              removedBy: input.userId || null,
+              preservedLotReference: true,
+            },
+          },
+          null,
+        );
+
+        createdMovementId = movement._id;
+      }
+
+      packagedRecord.quantity = 0;
+      await saveWithOptionalSession(packagedRecord, null);
+
+      return {
+        success: true as const,
+        message: 'Registro eliminado exitosamente',
+      };
+    }
+
+    if (!packagedRecord.transformationSources || packagedRecord.transformationSources.length === 0) {
+      throw new InventoryTransformationError(
+        'No hay trazabilidad por lote para revertir este producto empaquetado',
+      );
+    }
+
+    const restoredLots: SourceLotUsage[] = [];
+    const currentSources = [...(packagedRecord.transformationSources || [])];
+    const unitsToRestore = packagedRecord.quantity * packagingRule.unitsPerPackage;
+    let pendingUnitsToRestore = unitsToRestore;
+
+    packagedSnapshot = {
+      previousQuantity: packagedRecord.quantity,
+      previousSources: currentSources.map((source) => ({
+        inventoryId: source.inventoryId,
+        lotNumber: source.lotNumber,
+        quantity: source.quantity,
+      })),
+    };
+
+    for (let index = currentSources.length - 1; index >= 0 && pendingUnitsToRestore > 0; index -= 1) {
+      const source = currentSources[index];
+      const sourceLot = await Inventory.findById(source.inventoryId);
+
+      if (!sourceLot) {
+        throw new InventoryTransformationError(
+          `No se encontro el lote origen ${source.lotNumber} para revertir la transformacion`,
+        );
+      }
+
+      const unitsForSource = Math.min(source.quantity, pendingUnitsToRestore);
+      if (unitsForSource <= 0) {
+        continue;
+      }
+
+      rollbackLots.push({
+        id: sourceLot._id,
+        previousQuantity: sourceLot.quantity,
+      });
+
+      sourceLot.quantity += unitsForSource;
+      await saveWithOptionalSession(sourceLot, null);
+
+      restoredLots.push({
+        inventoryId: sourceLot._id,
+        productId: sourceLot.product as Types.ObjectId,
+        lotNumber: source.lotNumber,
+        quantity: unitsForSource,
+      });
+
+      source.quantity -= unitsForSource;
+      pendingUnitsToRestore -= unitsForSource;
+    }
+
+    if (pendingUnitsToRestore > 0) {
+      throw new InventoryTransformationError(
+        'No hay trazabilidad suficiente para revertir las unidades empaquetadas disponibles',
+      );
+    }
+
+    const restoredUnits = restoredLots.reduce((acc, lot) => acc + lot.quantity, 0);
+
+    if (packagedRecord.quantity > 0) {
+      const movement = await createMovementRecord(
+        {
+          movementType: 'TRANSFORMATION',
+          reason: 'PACKAGED_PRODUCT_REVERTED',
+          product: packagedProduct._id,
+          lotNumber: packagedRecord.lotNumber,
+          quantity: packagedRecord.quantity,
+          sourceLots: [
+            {
+              inventoryId: packagedRecord._id,
+              productId: packagedProduct._id,
+              lotNumber: packagedRecord.lotNumber,
+              quantity: packagedRecord.quantity,
+            },
+          ],
+          targetLots: restoredLots,
+          referenceInventory: packagedRecord._id,
+          metadata: {
+            revertedBy: input.userId || null,
+            unitsPerPackage: packagingRule.unitsPerPackage,
+            restoredUnits,
+            preservedLotReference: true,
+          },
+        },
+        null,
+      );
+
+      createdMovementId = movement._id;
+    }
+
+    packagedRecord.quantity = 0;
+    packagedRecord.transformationSources = currentSources.filter((source) => source.quantity > 0);
+    await saveWithOptionalSession(packagedRecord, null);
 
     return {
       success: true as const,
-      message: `Registro eliminado exitosamente. Se restauraron ${restoredLots.reduce((acc, lot) => acc + lot.quantity, 0)} unidad(es) a los mismos lotes origen.`,
+      message: restoredUnits > 0
+        ? `Registro eliminado exitosamente. Se restauraron ${restoredUnits} unidad(es) a los mismos lotes origen.`
+        : 'Registro eliminado exitosamente',
     };
   } catch (error) {
     if (createdMovementId) {
@@ -719,6 +807,15 @@ const runRevertWithoutTransaction = async (input: RevertInput) => {
       if (lot) {
         lot.quantity = snapshot.previousQuantity;
         await saveWithOptionalSession(lot, null);
+      }
+    }
+
+    if (packagedSnapshot) {
+      const packagedRecord = await Inventory.findById(input.inventoryId);
+      if (packagedRecord) {
+        packagedRecord.quantity = packagedSnapshot.previousQuantity;
+        packagedRecord.transformationSources = packagedSnapshot.previousSources || [];
+        await saveWithOptionalSession(packagedRecord, null);
       }
     }
 

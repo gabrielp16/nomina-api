@@ -6,6 +6,7 @@ import Client from '../models/Client.js';
 import Product from '../models/Product.js';
 import Inventory from '../models/Inventory.js';
 import InventoryMovement from '../models/InventoryMovement.js';
+import type { OrderStatus } from '../models/Order.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { auth, requirePermission } from '../middleware/auth.js';
 import type { AuthRequest } from '../middleware/auth.js';
@@ -14,6 +15,18 @@ import { activityLogger } from '../middleware/activityLogger.js';
 const router = express.Router();
 
 const lotNumberRegex = /^\d{8}-[A-Za-z0-9]{6}$/;
+const orderStatuses: OrderStatus[] = ['BORRADOR', 'RESERVADA', 'DESPACHADA', 'PAGADA', 'CERRADA', 'CANCELADA'];
+const reservationAppliedStatuses = new Set<OrderStatus>(['RESERVADA']);
+const inventoryAppliedStatuses = new Set<OrderStatus>(['DESPACHADA', 'PAGADA', 'CERRADA']);
+const immutableStatuses = new Set<OrderStatus>(['CERRADA', 'CANCELADA']);
+const statusTransitions: Record<OrderStatus, OrderStatus[]> = {
+  BORRADOR: ['BORRADOR', 'RESERVADA', 'DESPACHADA', 'PAGADA', 'CANCELADA'],
+  RESERVADA: ['RESERVADA', 'DESPACHADA', 'PAGADA', 'CANCELADA'],
+  DESPACHADA: ['DESPACHADA', 'PAGADA', 'CERRADA', 'CANCELADA'],
+  PAGADA: ['PAGADA', 'CERRADA', 'CANCELADA'],
+  CERRADA: ['CERRADA'],
+  CANCELADA: ['CANCELADA'],
+};
 
 type IncomingOrderItem = {
   product: string;
@@ -28,9 +41,15 @@ type InventoryAdjustment = {
   quantity: number;
 };
 
+type InventoryReservationConsumptionPlan = {
+  releaseAdjustments: InventoryAdjustment[];
+  reservedCreditMap: Map<string, number>;
+};
+
 type InventorySnapshot = {
   inventoryId: string;
   previousQuantity: number;
+  previousReservedQuantity: number;
 };
 
 type InventoryMovementDraft = {
@@ -62,6 +81,66 @@ type InventoryAdjustmentResult =
     }
   | { success: false; message: string };
 
+const statusReservesInventory = (status: OrderStatus) => reservationAppliedStatuses.has(status);
+const statusAffectsInventory = (status: OrderStatus) => inventoryAppliedStatuses.has(status);
+
+const canTransitionStatus = (from: OrderStatus, to: OrderStatus) => {
+  return statusTransitions[from]?.includes(to) ?? false;
+};
+
+const getAvailableQuantity = (inventoryRecord: { quantity: number; reservedQuantity?: number }) => {
+  return Math.max(0, inventoryRecord.quantity - (inventoryRecord.reservedQuantity || 0));
+};
+
+const getAdjustmentKey = (productId: string, lotNumber: string) => {
+  return `${productId}:${lotNumber.trim().toUpperCase()}`;
+};
+
+const buildAdjustmentQuantityMap = (adjustments: InventoryAdjustment[]) => {
+  const quantityMap = new Map<string, number>();
+
+  for (const adjustment of adjustments) {
+    const key = getAdjustmentKey(adjustment.productId, adjustment.lotNumber);
+    quantityMap.set(key, (quantityMap.get(key) || 0) + Number(adjustment.quantity || 0));
+  }
+
+  return quantityMap;
+};
+
+const buildReservationConsumptionPlan = (
+  originalReservations: InventoryAdjustment[],
+  nextDeductions: InventoryAdjustment[],
+): InventoryReservationConsumptionPlan => {
+  const nextDeductionMap = buildAdjustmentQuantityMap(nextDeductions);
+  const reservedCreditMap = new Map<string, number>();
+  const releaseAdjustments: InventoryAdjustment[] = [];
+
+  for (const reservation of originalReservations) {
+    const key = getAdjustmentKey(reservation.productId, reservation.lotNumber);
+    const reservedQuantity = Number(reservation.quantity || 0);
+    const nextDeductionQuantity = nextDeductionMap.get(key) || 0;
+    const consumedReservation = Math.min(reservedQuantity, nextDeductionQuantity);
+    const releasableReservation = reservedQuantity - consumedReservation;
+
+    if (consumedReservation > 0) {
+      reservedCreditMap.set(key, consumedReservation);
+    }
+
+    if (releasableReservation > 0) {
+      releaseAdjustments.push({
+        productId: reservation.productId,
+        lotNumber: reservation.lotNumber,
+        quantity: releasableReservation,
+      });
+    }
+  }
+
+  return {
+    releaseAdjustments,
+    reservedCreditMap,
+  };
+};
+
 const listValidation = [
   query('page').optional().isInt({ min: 1 }).withMessage('La pagina debe ser mayor a 0'),
   query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('El limite debe estar entre 1 y 100'),
@@ -71,7 +150,7 @@ const listValidation = [
 const orderItemValidation = [
   body('date').trim().isISO8601().withMessage('La fecha es invalida'),
   body('client').isMongoId().withMessage('Cliente invalido'),
-  body('status').isIn(['PAGADO', 'POR_PAGAR']).withMessage('Estado invalido'),
+  body('status').isIn(orderStatuses).withMessage('Estado invalido'),
   body('items').isArray({ min: 1 }).withMessage('Debe incluir al menos un producto en la orden'),
   body('items.*.product').isMongoId().withMessage('Producto invalido'),
   body('items.*.billNumber')
@@ -114,6 +193,9 @@ const applyInventoryAdjustment = async (
   adjustments: InventoryAdjustment[],
   operation: 'decrease' | 'increase',
   reason: string,
+  options?: {
+    reservedCreditMap?: Map<string, number>;
+  },
 ): Promise<InventoryAdjustmentResult> => {
   const snapshotMap = new Map<string, InventorySnapshot>();
   const movements: InventoryMovementDraft[] = [];
@@ -137,18 +219,33 @@ const applyInventoryAdjustment = async (
       snapshotMap.set(inventoryRecord._id.toString(), {
         inventoryId: inventoryRecord._id.toString(),
         previousQuantity: inventoryRecord.quantity,
+        previousReservedQuantity: inventoryRecord.reservedQuantity || 0,
       });
     }
 
     if (operation === 'decrease') {
-      if (inventoryRecord.quantity < adjustment.quantity) {
+      const adjustmentKey = getAdjustmentKey(adjustment.productId, normalizedLotNumber);
+      const reservedCredit = Math.min(
+        options?.reservedCreditMap?.get(adjustmentKey) || 0,
+        inventoryRecord.reservedQuantity || 0,
+      );
+      const availableQuantity = getAvailableQuantity(inventoryRecord) + reservedCredit;
+
+      if (availableQuantity < adjustment.quantity) {
         return {
           success: false,
-          message: `Inventario insuficiente para el lote ${adjustment.lotNumber}. Disponible: ${inventoryRecord.quantity}, solicitado: ${adjustment.quantity}`,
+          message: `Inventario insuficiente para el lote ${adjustment.lotNumber}. Disponible: ${availableQuantity}, solicitado: ${adjustment.quantity}`,
         };
       }
 
       inventoryRecord.quantity -= adjustment.quantity;
+
+      if (reservedCredit > 0) {
+        inventoryRecord.reservedQuantity = Math.max(
+          0,
+          (inventoryRecord.reservedQuantity || 0) - Math.min(adjustment.quantity, reservedCredit),
+        );
+      }
 
       movements.push({
         movementType: 'OUT',
@@ -199,11 +296,73 @@ const applyInventoryAdjustment = async (
   };
 };
 
+const applyInventoryReservationAdjustment = async (
+  adjustments: InventoryAdjustment[],
+  operation: 'reserve' | 'release',
+): Promise<InventoryAdjustmentResult> => {
+  const snapshotMap = new Map<string, InventorySnapshot>();
+
+  for (const adjustment of adjustments) {
+    const normalizedLotNumber = adjustment.lotNumber.trim().toUpperCase();
+
+    const inventoryRecord = await Inventory.findOne({
+      product: adjustment.productId,
+      lotNumber: normalizedLotNumber,
+    });
+
+    if (!inventoryRecord) {
+      return {
+        success: false,
+        message: `No existe inventario para el lote ${adjustment.lotNumber}`,
+      };
+    }
+
+    if (!snapshotMap.has(inventoryRecord._id.toString())) {
+      snapshotMap.set(inventoryRecord._id.toString(), {
+        inventoryId: inventoryRecord._id.toString(),
+        previousQuantity: inventoryRecord.quantity,
+        previousReservedQuantity: inventoryRecord.reservedQuantity || 0,
+      });
+    }
+
+    if (operation === 'reserve') {
+      const availableQuantity = getAvailableQuantity(inventoryRecord);
+
+      if (availableQuantity < adjustment.quantity) {
+        return {
+          success: false,
+          message: `No hay existencias disponibles para reservar el lote ${adjustment.lotNumber}. Disponible: ${availableQuantity}, solicitado: ${adjustment.quantity}`,
+        };
+      }
+
+      inventoryRecord.reservedQuantity += adjustment.quantity;
+    } else {
+      if ((inventoryRecord.reservedQuantity || 0) < adjustment.quantity) {
+        return {
+          success: false,
+          message: `La reserva del lote ${adjustment.lotNumber} es insuficiente para liberar ${adjustment.quantity} unidad(es)`,
+        };
+      }
+
+      inventoryRecord.reservedQuantity -= adjustment.quantity;
+    }
+
+    await inventoryRecord.save();
+  }
+
+  return {
+    success: true,
+    snapshots: Array.from(snapshotMap.values()),
+    movements: [],
+  };
+};
+
 const rollbackInventorySnapshots = async (snapshots: InventorySnapshot[]) => {
   for (const snapshot of [...snapshots].reverse()) {
     const inventoryRecord = await Inventory.findById(snapshot.inventoryId);
     if (inventoryRecord) {
       inventoryRecord.quantity = snapshot.previousQuantity;
+      inventoryRecord.reservedQuantity = snapshot.previousReservedQuantity;
       await inventoryRecord.save();
     }
   }
@@ -280,8 +439,8 @@ router.get('/options', auth, requirePermission('READ_PAYROLL'), asyncHandler(asy
   const [clients, products, inventory] = await Promise.all([
     Client.find({ active: true }).select('name').sort({ name: 1 }),
     Product.find({ active: true }).select('name productCode barcode price').sort({ name: 1 }),
-    Inventory.find({ quantity: { $gte: 0 } })
-      .select('product lotNumber quantity expirationDate')
+    Inventory.find({ quantity: { $gt: 0 } })
+      .select('product lotNumber quantity reservedQuantity expirationDate')
       .sort({ createdAt: -1 }),
   ]);
 
@@ -372,9 +531,16 @@ router.post('/', auth, requirePermission('CREATE_PAYROLL'), activityLogger('CREA
   const { date, client, status, items } = req.body as {
     date: string;
     client: string;
-    status: 'PAGADO' | 'POR_PAGAR';
+    status: OrderStatus;
     items: IncomingOrderItem[];
   };
+
+  if (status === 'CANCELADA' || status === 'CERRADA') {
+    return res.status(400).json({
+      success: false,
+      message: 'No puedes crear una orden directamente en estado cancelada o cerrada',
+    });
+  }
 
   const clientExists = await Client.findById(client);
   if (!clientExists) {
@@ -392,12 +558,29 @@ router.post('/', auth, requirePermission('CREATE_PAYROLL'), activityLogger('CREA
     });
   }
 
-  const deductions = mapAdjustments(items);
-  const deductionResult = await applyInventoryAdjustment(
-    deductions,
-    'decrease',
-    'ORDER_CREATED_OUT',
-  );
+  const shouldReserveInventory = statusReservesInventory(status);
+  const reservationAdjustments = shouldReserveInventory ? mapAdjustments(items) : [];
+  const reservationResult = shouldReserveInventory
+    ? await applyInventoryReservationAdjustment(reservationAdjustments, 'reserve')
+    : { success: true as const, snapshots: [], movements: [] };
+
+  if (!reservationResult.success) {
+    return res.status(400).json({
+      success: false,
+      message: reservationResult.message,
+    });
+  }
+
+  const shouldApplyInventory = statusAffectsInventory(status);
+  const deductions = shouldApplyInventory ? mapAdjustments(items) : [];
+  const deductionResult = shouldApplyInventory
+    ? await applyInventoryAdjustment(
+        deductions,
+        'decrease',
+        'ORDER_CREATED_OUT',
+      )
+    : { success: true as const, snapshots: [], movements: [] };
+
   if (!deductionResult.success) {
     return res.status(400).json({
       success: false,
@@ -417,11 +600,14 @@ router.post('/', auth, requirePermission('CREATE_PAYROLL'), activityLogger('CREA
     });
     createdOrderId = order._id.toString();
 
-    await createInventoryMovements(deductionResult.movements, {
-      orderId: createdOrderId,
-      action: 'CREATE_ORDER',
-      createdBy: req.user?._id?.toString() || null,
-    });
+    if (deductionResult.movements.length > 0) {
+      await createInventoryMovements(deductionResult.movements, {
+        orderId: createdOrderId,
+        action: 'CREATE_ORDER',
+        createdBy: req.user?._id?.toString() || null,
+        orderStatus: status,
+      });
+    }
 
     const created = await Order.findById(order._id)
       .populate({ path: 'client', select: 'name type documentNumber active' })
@@ -433,6 +619,7 @@ router.post('/', auth, requirePermission('CREATE_PAYROLL'), activityLogger('CREA
       data: created,
     });
   } catch (error) {
+    await rollbackInventorySnapshots(reservationResult.snapshots);
     await rollbackInventorySnapshots(deductionResult.snapshots);
 
     if (createdOrderId) {
@@ -464,9 +651,25 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
   const { date, client, status, items } = req.body as {
     date: string;
     client: string;
-    status: 'PAGADO' | 'POR_PAGAR';
+    status: OrderStatus;
     items: IncomingOrderItem[];
   };
+
+  const originalStatus = order.status as OrderStatus;
+
+  if (immutableStatuses.has(originalStatus)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Las ordenes cerradas o canceladas no se pueden editar',
+    });
+  }
+
+  if (!canTransitionStatus(originalStatus, status)) {
+    return res.status(400).json({
+      success: false,
+      message: `No se permite cambiar una orden de ${originalStatus} a ${status}`,
+    });
+  }
 
   const clientExists = await Client.findById(client);
   if (!clientExists) {
@@ -476,7 +679,12 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
     });
   }
 
-  const restoreAdjustments = mapAdjustments(
+  const originalReservesInventory = statusReservesInventory(originalStatus);
+  const originalAffectsInventory = statusAffectsInventory(originalStatus);
+  const nextReservesInventory = statusReservesInventory(status);
+  const nextAffectsInventory = statusAffectsInventory(status);
+
+  const originalAdjustments = mapAdjustments(
     order.items.map((item) => ({
       product: item.product.toString(),
       billNumber: item.billNumber,
@@ -485,11 +693,49 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
     })),
   );
 
-  const restoreResult = await applyInventoryAdjustment(
-    restoreAdjustments,
-    'increase',
-    'ORDER_UPDATED_RESTORE_PREVIOUS',
-  );
+  const mappedOrder = await buildOrderItems(items);
+  if (!mappedOrder.success) {
+    return res.status(400).json({
+      success: false,
+      message: mappedOrder.message,
+    });
+  }
+
+  const nextAdjustments = mapAdjustments(items);
+  const reservationConsumptionPlan = originalReservesInventory && nextAffectsInventory
+    ? buildReservationConsumptionPlan(originalAdjustments, nextAdjustments)
+    : { releaseAdjustments: originalAdjustments, reservedCreditMap: new Map<string, number>() };
+
+  const restoreReservationAdjustments = originalReservesInventory
+    ? reservationConsumptionPlan.releaseAdjustments
+    : [];
+
+  const releaseReservationResult = originalReservesInventory
+    ? await applyInventoryReservationAdjustment(
+        restoreReservationAdjustments,
+        'release',
+      )
+    : { success: true as const, snapshots: [], movements: [] };
+
+  if (!releaseReservationResult.success) {
+    return res.status(400).json({
+      success: false,
+      message: releaseReservationResult.message,
+    });
+  }
+
+  const restoreAdjustments = originalAffectsInventory
+    ? originalAdjustments
+    : [];
+
+  const restoreResult = originalAffectsInventory
+    ? await applyInventoryAdjustment(
+        restoreAdjustments,
+        'increase',
+        'ORDER_UPDATED_RESTORE_PREVIOUS',
+      )
+    : { success: true as const, snapshots: [], movements: [] };
+
   if (!restoreResult.success) {
     return res.status(400).json({
       success: false,
@@ -497,23 +743,35 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
     });
   }
 
-  const mappedOrder = await buildOrderItems(items);
-  if (!mappedOrder.success) {
+  const newReservations = nextReservesInventory ? nextAdjustments : [];
+  const reservationResult = nextReservesInventory
+    ? await applyInventoryReservationAdjustment(newReservations, 'reserve')
+    : { success: true as const, snapshots: [], movements: [] };
+
+  if (!reservationResult.success) {
+    await rollbackInventorySnapshots(releaseReservationResult.snapshots);
     await rollbackInventorySnapshots(restoreResult.snapshots);
     return res.status(400).json({
       success: false,
-      message: mappedOrder.message,
+      message: reservationResult.message,
     });
   }
 
-  const newDeductions = mapAdjustments(items);
-  const deductionResult = await applyInventoryAdjustment(
-    newDeductions,
-    'decrease',
-    'ORDER_UPDATED_OUT',
-  );
+  const newDeductions = nextAffectsInventory ? nextAdjustments : [];
+  const deductionResult = nextAffectsInventory
+    ? await applyInventoryAdjustment(
+        newDeductions,
+        'decrease',
+        'ORDER_UPDATED_OUT',
+        {
+          reservedCreditMap: reservationConsumptionPlan.reservedCreditMap,
+        },
+      )
+    : { success: true as const, snapshots: [], movements: [] };
 
   if (!deductionResult.success) {
+    await rollbackInventorySnapshots(reservationResult.snapshots);
+    await rollbackInventorySnapshots(releaseReservationResult.snapshots);
     await rollbackInventorySnapshots(restoreResult.snapshots);
     return res.status(400).json({
       success: false,
@@ -523,7 +781,6 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
 
   const originalDate = order.date;
   const originalClient = order.client;
-  const originalStatus = order.status;
   const originalItems = order.items.map((item) => ({
     product: item.product,
     billNumber: item.billNumber,
@@ -543,14 +800,20 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
   try {
     await order.save();
 
-    await createInventoryMovements(
-      [...restoreResult.movements, ...deductionResult.movements],
-      {
-        orderId: order._id.toString(),
-        action: 'UPDATE_ORDER',
-        updatedBy: req.user?._id?.toString() || null,
-      },
-    );
+    const movementDrafts = [...restoreResult.movements, ...deductionResult.movements];
+
+    if (movementDrafts.length > 0) {
+      await createInventoryMovements(
+        movementDrafts,
+        {
+          orderId: order._id.toString(),
+          action: 'UPDATE_ORDER',
+          updatedBy: req.user?._id?.toString() || null,
+          previousStatus: originalStatus,
+          nextStatus: status,
+        },
+      );
+    }
 
     const updated = await Order.findById(order._id)
       .populate({ path: 'client', select: 'name type documentNumber active' })
@@ -563,6 +826,8 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
     });
   } catch (error) {
     await rollbackInventorySnapshots([
+      ...releaseReservationResult.snapshots,
+      ...reservationResult.snapshots,
       ...restoreResult.snapshots,
       ...deductionResult.snapshots,
     ]);
@@ -588,20 +853,59 @@ router.delete('/:id', auth, requirePermission('DELETE_PAYROLL'), activityLogger(
     });
   }
 
-  const restoreAdjustments = mapAdjustments(
-    order.items.map((item) => ({
-      product: item.product.toString(),
-      billNumber: item.billNumber,
-      lotNumber: item.lotNumber,
-      quantity: item.quantity,
-    })),
-  );
+  const originalStatus = order.status as OrderStatus;
 
-  const restoreResult = await applyInventoryAdjustment(
-    restoreAdjustments,
-    'increase',
-    'ORDER_DELETED_RESTORE',
-  );
+  if (immutableStatuses.has(originalStatus)) {
+    return res.status(400).json({
+      success: false,
+      message: 'Las ordenes cerradas o canceladas no se pueden eliminar',
+    });
+  }
+
+  const releaseReservationAdjustments = statusReservesInventory(originalStatus)
+    ? mapAdjustments(
+        order.items.map((item) => ({
+          product: item.product.toString(),
+          billNumber: item.billNumber,
+          lotNumber: item.lotNumber,
+          quantity: item.quantity,
+        })),
+      )
+    : [];
+
+  const releaseReservationResult = statusReservesInventory(originalStatus)
+    ? await applyInventoryReservationAdjustment(
+        releaseReservationAdjustments,
+        'release',
+      )
+    : { success: true as const, snapshots: [], movements: [] };
+
+  if (!releaseReservationResult.success) {
+    return res.status(400).json({
+      success: false,
+      message: releaseReservationResult.message,
+    });
+  }
+
+  const restoreAdjustments = statusAffectsInventory(originalStatus)
+    ? mapAdjustments(
+        order.items.map((item) => ({
+          product: item.product.toString(),
+          billNumber: item.billNumber,
+          lotNumber: item.lotNumber,
+          quantity: item.quantity,
+        })),
+      )
+    : [];
+
+  const restoreResult = statusAffectsInventory(originalStatus)
+    ? await applyInventoryAdjustment(
+        restoreAdjustments,
+        'increase',
+        'ORDER_DELETED_RESTORE',
+      )
+    : { success: true as const, snapshots: [], movements: [] };
+
   if (!restoreResult.success) {
     return res.status(400).json({
       success: false,
@@ -610,11 +914,14 @@ router.delete('/:id', auth, requirePermission('DELETE_PAYROLL'), activityLogger(
   }
 
   try {
-    await createInventoryMovements(restoreResult.movements, {
-      orderId: order._id.toString(),
-      action: 'DELETE_ORDER',
-      deletedBy: req.user?._id?.toString() || null,
-    });
+    if (restoreResult.movements.length > 0) {
+      await createInventoryMovements(restoreResult.movements, {
+        orderId: order._id.toString(),
+        action: 'DELETE_ORDER',
+        deletedBy: req.user?._id?.toString() || null,
+        previousStatus: originalStatus,
+      });
+    }
 
     await Order.findByIdAndDelete(req.params.id);
 
@@ -623,6 +930,7 @@ router.delete('/:id', auth, requirePermission('DELETE_PAYROLL'), activityLogger(
       message: 'Orden eliminada exitosamente',
     });
   } catch (error) {
+    await rollbackInventorySnapshots(releaseReservationResult.snapshots);
     await rollbackInventorySnapshots(restoreResult.snapshots);
     throw error;
   }

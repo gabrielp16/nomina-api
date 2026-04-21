@@ -21,7 +21,7 @@ const expirationDateRegex = /^\d{4}\/\d{2}\/\d{2}$/;
 
 const listValidation = [
   query('page').optional().isInt({ min: 1 }).withMessage('La pagina debe ser mayor a 0'),
-  query('limit').optional().isInt({ min: 1, max: 100 }).withMessage('El limite debe estar entre 1 y 100'),
+  query('limit').optional().isInt({ min: 1 }).withMessage('El limite debe ser mayor a 0'),
   query('search').optional().isString().withMessage('La busqueda debe ser un texto')
 ];
 
@@ -44,7 +44,8 @@ router.get('/summary', auth, requirePermission('READ_PAYROLL'), asyncHandler(asy
     {
       $group: {
         _id: '$product',
-        totalQuantity: { $sum: '$quantity' }
+        totalQuantity: { $sum: '$quantity' },
+        totalReservedQuantity: { $sum: '$reservedQuantity' },
       }
     }
   ]);
@@ -62,7 +63,9 @@ router.get('/summary', auth, requirePermission('READ_PAYROLL'), asyncHandler(asy
         productId: item._id.toString(),
         productName: product.name,
         productCode: product.productCode,
-        totalQuantity: item.totalQuantity
+        totalQuantity: item.totalQuantity,
+        totalReservedQuantity: item.totalReservedQuantity || 0,
+        totalAvailableQuantity: Math.max(0, item.totalQuantity - (item.totalReservedQuantity || 0)),
       };
     })
     .filter(Boolean)
@@ -82,9 +85,10 @@ router.get('/', auth, requirePermission('READ_PAYROLL'), listValidation, asyncHa
   }
 
   const page = parseInt(req.query.page as string) || 1;
-  const limit = parseInt(req.query.limit as string) || 10;
+  const rawLimit = req.query.limit as string | undefined;
+  const limit = rawLimit ? parseInt(rawLimit) : null;
   const search = (req.query.search as string || '').trim();
-  const skip = (page - 1) * limit;
+  const skip = limit ? (page - 1) * limit : 0;
 
   const filter: any = {};
 
@@ -106,14 +110,21 @@ router.get('/', auth, requirePermission('READ_PAYROLL'), listValidation, asyncHa
     ];
   }
 
+  const recordsQuery = Inventory.find(filter)
+    .populate({ path: 'product', select: 'name productCode active' })
+    .sort({ createdAt: -1 });
+
+  if (limit) {
+    recordsQuery.skip(skip).limit(limit);
+  }
+
   const [records, total] = await Promise.all([
-    Inventory.find(filter)
-      .populate({ path: 'product', select: 'name productCode active' })
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(limit),
+    recordsQuery,
     Inventory.countDocuments(filter)
   ]);
+
+  const resolvedLimit = limit ?? total;
+  const totalPages = limit ? Math.ceil(total / limit) : 1;
 
   res.json({
     success: true,
@@ -121,8 +132,8 @@ router.get('/', auth, requirePermission('READ_PAYROLL'), listValidation, asyncHa
       data: records,
       total,
       page,
-      limit,
-      totalPages: Math.ceil(total / limit)
+      limit: resolvedLimit,
+      totalPages
     }
   });
 }));
@@ -360,7 +371,7 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
       }).sort({ createdAt: 1, _id: 1 });
 
       const availableUnits = sourceRecords.reduce(
-        (total, sourceRecord) => total + sourceRecord.quantity,
+        (total, sourceRecord) => total + Math.max(0, sourceRecord.quantity - (sourceRecord.reservedQuantity || 0)),
         0,
       );
       const requiredUnits = packagedUnitsToConsume * finalRule.unitsPerPackage;
@@ -387,7 +398,10 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
           break;
         }
 
-        const unitsToDiscount = Math.min(sourceRecord.quantity, pendingUnits);
+        const unitsToDiscount = Math.min(
+          Math.max(0, sourceRecord.quantity - (sourceRecord.reservedQuantity || 0)),
+          pendingUnits,
+        );
         if (unitsToDiscount <= 0) {
           continue;
         }

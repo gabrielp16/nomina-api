@@ -1,6 +1,6 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
-export type OrderStatus = 'PAGADO' | 'POR_PAGAR';
+export type OrderStatus = 'BORRADOR' | 'RESERVADA' | 'DESPACHADA' | 'PAGADA' | 'CERRADA' | 'CANCELADA';
 
 export interface IOrderItem {
   product: Types.ObjectId;
@@ -88,8 +88,8 @@ const orderSchema = new Schema<IOrder>(
     },
     status: {
       type: String,
-      enum: ['PAGADO', 'POR_PAGAR'],
-      default: 'POR_PAGAR',
+      enum: ['BORRADOR', 'RESERVADA', 'DESPACHADA', 'PAGADA', 'CERRADA', 'CANCELADA'],
+      default: 'BORRADOR',
       required: true,
     },
   },

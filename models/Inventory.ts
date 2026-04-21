@@ -4,6 +4,7 @@ export interface IInventory extends Document {
   _id: Types.ObjectId;
   product: Types.ObjectId;
   quantity: number;
+  reservedQuantity: number;
   lotNumber: string;
   expirationDate: string;
   transformationSources?: {
@@ -51,6 +52,12 @@ const inventorySchema = new Schema<IInventory>(
       required: true,
       min: 0
     },
+    reservedQuantity: {
+      type: Number,
+      required: true,
+      min: 0,
+      default: 0,
+    },
     lotNumber: {
       type: String,
       required: true,
@@ -73,6 +80,7 @@ const inventorySchema = new Schema<IInventory>(
     toJSON: {
       transform: function(doc: any, ret: any) {
         ret.id = ret._id;
+        ret.availableQuantity = Math.max(0, Number(ret.quantity || 0) - Number(ret.reservedQuantity || 0));
         delete ret._id;
         delete ret.__v;
         return ret;
