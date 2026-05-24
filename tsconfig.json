@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",
-    "moduleResolution": "node",
+    "moduleResolution": "bundler",
     "allowSyntheticDefaultImports": true,
     "esModuleInterop": true,
     "allowJs": true,
@@ -27,16 +27,7 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": false,
     "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
-    "baseUrl": "./",
-    "paths": {
-      "@/*": ["./*"],
-      "@/models/*": ["./models/*"],
-      "@/routes/*": ["./routes/*"],
-      "@/middleware/*": ["./middleware/*"],
-      "@/utils/*": ["./utils/*"],
-      "@/types/*": ["./types/*"]
-    }
+    "emitDecoratorMetadata": true
   },
   "include": [
     "**/*.ts",
