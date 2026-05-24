@@ -12,7 +12,7 @@ import {
   createPackagedInventoryWithTraceability,
   InventoryTransformationError,
   revertPackagedInventoryTransformation,
-} from '../services/inventoryTransformationService';
+} from '../services/inventoryTransformationService.js';
 
 const router = express.Router();
 
