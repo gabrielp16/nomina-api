@@ -25,6 +25,7 @@ export interface IClientContact {
 export interface IClient extends Document {
   _id: Types.ObjectId;
   name: string;
+  alias?: string;
   category: string;
   type: ClientType;
   paymentForm: ClientPaymentForm;
@@ -36,6 +37,7 @@ export interface IClient extends Document {
   contacts: IClientContact[];
   email: string;
   deliveryHours?: string;
+  notes?: string;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -71,6 +73,12 @@ const clientSchema = new Schema<IClient>(
       type: String,
       required: true,
       trim: true,
+      maxlength: 100
+    },
+    alias: {
+      type: String,
+      trim: true,
+      default: '',
       maxlength: 100
     },
     category: {
@@ -138,6 +146,12 @@ const clientSchema = new Schema<IClient>(
       default: '',
       maxlength: 100
     },
+    notes: {
+      type: String,
+      trim: true,
+      default: '',
+      maxlength: 1000
+    },
     active: {
       type: Boolean,
       default: true
@@ -157,6 +171,7 @@ const clientSchema = new Schema<IClient>(
 );
 
 clientSchema.index({ name: 1 });
+clientSchema.index({ alias: 1 });
 clientSchema.index({ category: 1 });
 clientSchema.index({ paymentForm: 1 });
 clientSchema.index({ paymentMethod: 1 });

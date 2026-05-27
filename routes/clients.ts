@@ -43,6 +43,7 @@ const listValidation = [
 
 const updateClientValidation = [
   body('name').optional().trim().isLength({ min: 1, max: 100 }).withMessage('La razon social debe tener entre 1 y 100 caracteres'),
+  body('alias').optional({ nullable: true }).isString().withMessage('El alias debe ser texto').isLength({ max: 100 }).withMessage('El alias debe tener maximo 100 caracteres'),
   body('category').optional().trim().isLength({ min: 1, max: 50 }).withMessage('La categoria debe tener entre 1 y 50 caracteres'),
   body('type').optional().isIn(['Persona Natural', 'Persona Juridica']).withMessage('El tipo debe ser Persona Natural o Persona Juridica'),
   body('paymentForm').optional().isIn(CLIENT_PAYMENT_FORMS).withMessage('La forma de pago no es valida'),
@@ -57,11 +58,13 @@ const updateClientValidation = [
   body('contacts.*.phone').trim().isLength({ min: 1, max: 20 }).withMessage('El telefono del contacto debe tener entre 1 y 20 caracteres'),
   body('email').optional().isEmail().isLength({ max: 70 }).withMessage('El correo debe ser valido y maximo 70 caracteres'),
   body('deliveryHours').optional({ nullable: true }).isString().withMessage('El horario de atencion debe ser texto').isLength({ max: 100 }).withMessage('El horario de atencion debe tener maximo 100 caracteres'),
+  body('notes').optional({ nullable: true }).isString().withMessage('Las notas deben ser texto').isLength({ max: 1000 }).withMessage('Las notas deben tener maximo 1000 caracteres'),
   body('active').optional().isBoolean().withMessage('El estado activo debe ser booleano')
 ];
 
 const createClientValidation = [
   body('name').trim().isLength({ min: 1, max: 100 }).withMessage('La razon social debe tener entre 1 y 100 caracteres'),
+  body('alias').optional({ nullable: true }).isString().withMessage('El alias debe ser texto').isLength({ max: 100 }).withMessage('El alias debe tener maximo 100 caracteres'),
   body('category').trim().isLength({ min: 1, max: 50 }).withMessage('La categoria debe tener entre 1 y 50 caracteres'),
   body('type').isIn(['Persona Natural', 'Persona Juridica']).withMessage('El tipo debe ser Persona Natural o Persona Juridica'),
   body('paymentForm').isIn(CLIENT_PAYMENT_FORMS).withMessage('La forma de pago no es valida'),
@@ -76,6 +79,7 @@ const createClientValidation = [
   body('contacts.*.phone').trim().isLength({ min: 1, max: 20 }).withMessage('El telefono del contacto debe tener entre 1 y 20 caracteres'),
   body('email').isEmail().isLength({ max: 70 }).withMessage('El correo debe ser valido y maximo 70 caracteres'),
   body('deliveryHours').optional({ nullable: true }).isString().withMessage('El horario de atencion debe ser texto').isLength({ max: 100 }).withMessage('El horario de atencion debe tener maximo 100 caracteres'),
+  body('notes').optional({ nullable: true }).isString().withMessage('Las notas deben ser texto').isLength({ max: 1000 }).withMessage('Las notas deben tener maximo 1000 caracteres'),
   body('active').optional().isBoolean().withMessage('El estado activo debe ser booleano')
 ];
 
@@ -230,7 +234,7 @@ router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE
     });
   }
 
-  const { name, category, type, paymentForm, paymentMethod, documentNumber, address, city, phone, contacts, email, deliveryHours, active } = req.body;
+  const { name, alias, category, type, paymentForm, paymentMethod, documentNumber, address, city, phone, contacts, email, deliveryHours, notes, active } = req.body;
 
   const clientCategory = await ClientCategory.findOne({ name: category });
   if (!clientCategory) {
@@ -244,6 +248,7 @@ router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE
 
   const client = await Client.create({
     name,
+    alias: typeof alias === 'string' ? alias.trim() : '',
     category,
     type,
     paymentForm,
@@ -255,6 +260,7 @@ router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE
     contacts: sanitizedContacts,
     email,
     deliveryHours: deliveryHours ?? '',
+    notes: typeof notes === 'string' ? notes.trim() : '',
     active: active ?? true
   });
 
@@ -293,6 +299,7 @@ router.get('/', auth, requirePermission('READ_USERS'), listValidation, asyncHand
   if (search) {
     const searchConditions = [
       { name: { $regex: search, $options: 'i' } },
+      { alias: { $regex: search, $options: 'i' } },
       { category: { $regex: search, $options: 'i' } },
       { type: { $regex: search, $options: 'i' } },
       { paymentForm: { $regex: search, $options: 'i' } },
@@ -355,7 +362,7 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
     });
   }
 
-  const { name, category, type, paymentForm, paymentMethod, documentNumber, address, city, phone, contacts, email, deliveryHours, active } = req.body;
+  const { name, alias, category, type, paymentForm, paymentMethod, documentNumber, address, city, phone, contacts, email, deliveryHours, notes, active } = req.body;
 
   if (category !== undefined) {
     const clientCategory = await ClientCategory.findOne({ name: category });
@@ -368,6 +375,7 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
   }
 
   if (name !== undefined) client.name = name;
+  if (alias !== undefined) client.alias = typeof alias === 'string' ? alias.trim() : '';
   if (category !== undefined) client.category = category;
   if (type !== undefined) client.type = type;
   if (paymentForm !== undefined) client.paymentForm = paymentForm;
@@ -379,6 +387,7 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
   if (contacts !== undefined) client.contacts = sanitizeContacts(contacts) as IClient['contacts'];
   if (email !== undefined) client.email = email;
   if (deliveryHours !== undefined) client.deliveryHours = deliveryHours;
+  if (notes !== undefined) client.notes = typeof notes === 'string' ? notes.trim() : '';
   if (active !== undefined) client.active = active;
 
   await client.save();
