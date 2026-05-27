@@ -3,6 +3,8 @@ import type { Response } from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import type { SortOrder } from 'mongoose';
 import Client from '../models/Client.js';
+import type { IClient } from '../models/Client.js';
+import { CLIENT_PAYMENT_FORMS, CLIENT_PAYMENT_METHODS } from '../models/Client.js';
 import ClientCategory from '../models/ClientCategory.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { auth, requirePermission } from '../middleware/auth.js';
@@ -11,16 +13,25 @@ import { activityLogger } from '../middleware/activityLogger.js';
 
 const router = express.Router();
 
-const paymentTypeValues = [
-  '8 dias',
-  '10 dias',
-  '15 dias',
-  '30 dias',
-  '60 dias',
-  '90 dias',
-  'Efectivo',
-  'Transferencia'
-];
+interface ContactInput {
+  name?: unknown;
+  area?: unknown;
+  phone?: unknown;
+}
+
+const sanitizeContacts = (raw: unknown) => {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      const contact = (item ?? {}) as ContactInput;
+      return {
+        name: typeof contact.name === 'string' ? contact.name.trim() : '',
+        area: typeof contact.area === 'string' ? contact.area.trim() : '',
+        phone: typeof contact.phone === 'string' ? contact.phone.trim() : ''
+      };
+    })
+    .filter((contact) => contact.name && contact.phone);
+};
 
 const listValidation = [
   query('page').optional().isInt({ min: 1 }).withMessage('La pagina debe ser mayor a 0'),
@@ -34,12 +45,18 @@ const updateClientValidation = [
   body('name').optional().trim().isLength({ min: 1, max: 100 }).withMessage('La razon social debe tener entre 1 y 100 caracteres'),
   body('category').optional().trim().isLength({ min: 1, max: 50 }).withMessage('La categoria debe tener entre 1 y 50 caracteres'),
   body('type').optional().isIn(['Persona Natural', 'Persona Juridica']).withMessage('El tipo debe ser Persona Natural o Persona Juridica'),
-  body('paymentType').optional().isIn(paymentTypeValues).withMessage('El tipo de pago no es valido'),
+  body('paymentForm').optional().isIn(CLIENT_PAYMENT_FORMS).withMessage('La forma de pago no es valida'),
+  body('paymentMethod').optional().isIn(CLIENT_PAYMENT_METHODS).withMessage('El medio de pago no es valido'),
   body('documentNumber').optional().trim().isLength({ min: 1, max: 20 }).withMessage('El NIT debe tener entre 1 y 20 caracteres'),
   body('address').optional().trim().isLength({ min: 1, max: 256 }).withMessage('La direccion debe tener entre 1 y 256 caracteres'),
   body('city').optional().trim().isLength({ min: 1, max: 50 }).withMessage('La ciudad debe tener entre 1 y 50 caracteres'),
-  body('phone').optional().trim().isLength({ min: 1, max: 10 }).withMessage('El telefono debe tener entre 1 y 10 caracteres'),
+  body('phone').optional({ nullable: true }).isString().withMessage('El telefono debe ser texto').isLength({ max: 20 }).withMessage('El telefono debe tener maximo 20 caracteres'),
+  body('contacts').optional().isArray().withMessage('Los contactos deben ser un arreglo'),
+  body('contacts.*.name').trim().isLength({ min: 1, max: 100 }).withMessage('El nombre del responsable debe tener entre 1 y 100 caracteres'),
+  body('contacts.*.area').optional({ nullable: true }).isString().withMessage('El area debe ser texto').isLength({ max: 100 }).withMessage('El area debe tener maximo 100 caracteres'),
+  body('contacts.*.phone').trim().isLength({ min: 1, max: 20 }).withMessage('El telefono del contacto debe tener entre 1 y 20 caracteres'),
   body('email').optional().isEmail().isLength({ max: 70 }).withMessage('El correo debe ser valido y maximo 70 caracteres'),
+  body('deliveryHours').optional({ nullable: true }).isString().withMessage('El horario de atencion debe ser texto').isLength({ max: 100 }).withMessage('El horario de atencion debe tener maximo 100 caracteres'),
   body('active').optional().isBoolean().withMessage('El estado activo debe ser booleano')
 ];
 
@@ -47,12 +64,18 @@ const createClientValidation = [
   body('name').trim().isLength({ min: 1, max: 100 }).withMessage('La razon social debe tener entre 1 y 100 caracteres'),
   body('category').trim().isLength({ min: 1, max: 50 }).withMessage('La categoria debe tener entre 1 y 50 caracteres'),
   body('type').isIn(['Persona Natural', 'Persona Juridica']).withMessage('El tipo debe ser Persona Natural o Persona Juridica'),
-  body('paymentType').isIn(paymentTypeValues).withMessage('El tipo de pago no es valido'),
+  body('paymentForm').isIn(CLIENT_PAYMENT_FORMS).withMessage('La forma de pago no es valida'),
+  body('paymentMethod').isIn(CLIENT_PAYMENT_METHODS).withMessage('El medio de pago no es valido'),
   body('documentNumber').trim().isLength({ min: 1, max: 20 }).withMessage('El NIT debe tener entre 1 y 20 caracteres'),
   body('address').trim().isLength({ min: 1, max: 256 }).withMessage('La direccion debe tener entre 1 y 256 caracteres'),
   body('city').trim().isLength({ min: 1, max: 50 }).withMessage('La ciudad debe tener entre 1 y 50 caracteres'),
-  body('phone').trim().isLength({ min: 1, max: 10 }).withMessage('El telefono debe tener entre 1 y 10 caracteres'),
+  body('phone').optional({ nullable: true }).isString().withMessage('El telefono debe ser texto').isLength({ max: 20 }).withMessage('El telefono debe tener maximo 20 caracteres'),
+  body('contacts').optional().isArray().withMessage('Los contactos deben ser un arreglo'),
+  body('contacts.*.name').trim().isLength({ min: 1, max: 100 }).withMessage('El nombre del responsable debe tener entre 1 y 100 caracteres'),
+  body('contacts.*.area').optional({ nullable: true }).isString().withMessage('El area debe ser texto').isLength({ max: 100 }).withMessage('El area debe tener maximo 100 caracteres'),
+  body('contacts.*.phone').trim().isLength({ min: 1, max: 20 }).withMessage('El telefono del contacto debe tener entre 1 y 20 caracteres'),
   body('email').isEmail().isLength({ max: 70 }).withMessage('El correo debe ser valido y maximo 70 caracteres'),
+  body('deliveryHours').optional({ nullable: true }).isString().withMessage('El horario de atencion debe ser texto').isLength({ max: 100 }).withMessage('El horario de atencion debe tener maximo 100 caracteres'),
   body('active').optional().isBoolean().withMessage('El estado activo debe ser booleano')
 ];
 
@@ -207,7 +230,7 @@ router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE
     });
   }
 
-  const { name, category, type, paymentType, documentNumber, address, city, phone, email, active } = req.body;
+  const { name, category, type, paymentForm, paymentMethod, documentNumber, address, city, phone, contacts, email, deliveryHours, active } = req.body;
 
   const clientCategory = await ClientCategory.findOne({ name: category });
   if (!clientCategory) {
@@ -217,16 +240,21 @@ router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE
     });
   }
 
+  const sanitizedContacts = sanitizeContacts(contacts);
+
   const client = await Client.create({
     name,
     category,
     type,
-    paymentType,
+    paymentForm,
+    paymentMethod,
     documentNumber,
     address,
     city,
-    phone,
+    phone: typeof phone === 'string' ? phone.trim() : '',
+    contacts: sanitizedContacts,
     email,
+    deliveryHours: deliveryHours ?? '',
     active: active ?? true
   });
 
@@ -267,7 +295,8 @@ router.get('/', auth, requirePermission('READ_USERS'), listValidation, asyncHand
       { name: { $regex: search, $options: 'i' } },
       { category: { $regex: search, $options: 'i' } },
       { type: { $regex: search, $options: 'i' } },
-      { paymentType: { $regex: search, $options: 'i' } },
+      { paymentForm: { $regex: search, $options: 'i' } },
+      { paymentMethod: { $regex: search, $options: 'i' } },
       { documentNumber: { $regex: search, $options: 'i' } },
       { city: { $regex: search, $options: 'i' } },
       { email: { $regex: search, $options: 'i' } }
@@ -326,7 +355,7 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
     });
   }
 
-  const { name, category, type, paymentType, documentNumber, address, city, phone, email, active } = req.body;
+  const { name, category, type, paymentForm, paymentMethod, documentNumber, address, city, phone, contacts, email, deliveryHours, active } = req.body;
 
   if (category !== undefined) {
     const clientCategory = await ClientCategory.findOne({ name: category });
@@ -341,12 +370,15 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
   if (name !== undefined) client.name = name;
   if (category !== undefined) client.category = category;
   if (type !== undefined) client.type = type;
-  if (paymentType !== undefined) client.paymentType = paymentType;
+  if (paymentForm !== undefined) client.paymentForm = paymentForm;
+  if (paymentMethod !== undefined) client.paymentMethod = paymentMethod;
   if (documentNumber !== undefined) client.documentNumber = documentNumber;
   if (address !== undefined) client.address = address;
   if (city !== undefined) client.city = city;
-  if (phone !== undefined) client.phone = phone;
+  if (phone !== undefined) client.phone = typeof phone === 'string' ? phone.trim() : '';
+  if (contacts !== undefined) client.contacts = sanitizeContacts(contacts) as IClient['contacts'];
   if (email !== undefined) client.email = email;
+  if (deliveryHours !== undefined) client.deliveryHours = deliveryHours;
   if (active !== undefined) client.active = active;
 
   await client.save();

@@ -1,31 +1,69 @@
 import mongoose, { Document, Schema, Types } from 'mongoose';
 
 export type ClientType = 'Persona Natural' | 'Persona Juridica';
-export type ClientPaymentType =
-  | '8 dias'
-  | '10 dias'
-  | '15 dias'
-  | '30 dias'
-  | '60 dias'
-  | '90 dias'
-  | 'Efectivo'
-  | 'Transferencia';
+
+export type ClientPaymentForm = 'Contado' | 'Pago a 8 dias' | 'Pago a 30 dias';
+export type ClientPaymentMethod = 'Efectivo' | 'Transferencia';
+
+export const CLIENT_PAYMENT_FORMS: ClientPaymentForm[] = [
+  'Contado',
+  'Pago a 8 dias',
+  'Pago a 30 dias'
+];
+
+export const CLIENT_PAYMENT_METHODS: ClientPaymentMethod[] = [
+  'Efectivo',
+  'Transferencia'
+];
+
+export interface IClientContact {
+  name: string;
+  area?: string;
+  phone: string;
+}
 
 export interface IClient extends Document {
   _id: Types.ObjectId;
   name: string;
   category: string;
   type: ClientType;
-  paymentType: ClientPaymentType;
+  paymentForm: ClientPaymentForm;
+  paymentMethod: ClientPaymentMethod;
   documentNumber: string;
   address: string;
   city: string;
-  phone: string;
+  phone?: string;
+  contacts: IClientContact[];
   email: string;
+  deliveryHours?: string;
   active: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
+
+const clientContactSchema = new Schema<IClientContact>(
+  {
+    name: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 100
+    },
+    area: {
+      type: String,
+      trim: true,
+      default: '',
+      maxlength: 100
+    },
+    phone: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 20
+    }
+  },
+  { _id: false }
+);
 
 const clientSchema = new Schema<IClient>(
   {
@@ -46,19 +84,16 @@ const clientSchema = new Schema<IClient>(
       required: true,
       enum: ['Persona Natural', 'Persona Juridica']
     },
-    paymentType: {
+    paymentForm: {
       type: String,
       required: true,
-      enum: [
-        '8 dias',
-        '10 dias',
-        '15 dias',
-        '30 dias',
-        '60 dias',
-        '90 dias',
-        'Efectivo',
-        'Transferencia'
-      ],
+      enum: CLIENT_PAYMENT_FORMS,
+      default: 'Contado'
+    },
+    paymentMethod: {
+      type: String,
+      required: true,
+      enum: CLIENT_PAYMENT_METHODS,
       default: 'Efectivo'
     },
     documentNumber: {
@@ -81,9 +116,14 @@ const clientSchema = new Schema<IClient>(
     },
     phone: {
       type: String,
-      required: true,
+      required: false,
       trim: true,
-      maxlength: 10
+      default: '',
+      maxlength: 20
+    },
+    contacts: {
+      type: [clientContactSchema],
+      default: []
     },
     email: {
       type: String,
@@ -91,6 +131,12 @@ const clientSchema = new Schema<IClient>(
       trim: true,
       lowercase: true,
       maxlength: 70
+    },
+    deliveryHours: {
+      type: String,
+      trim: true,
+      default: '',
+      maxlength: 100
     },
     active: {
       type: Boolean,
@@ -112,7 +158,8 @@ const clientSchema = new Schema<IClient>(
 
 clientSchema.index({ name: 1 });
 clientSchema.index({ category: 1 });
-clientSchema.index({ paymentType: 1 });
+clientSchema.index({ paymentForm: 1 });
+clientSchema.index({ paymentMethod: 1 });
 clientSchema.index({ documentNumber: 1 });
 clientSchema.index({ email: 1 });
 clientSchema.index({ active: 1 });
