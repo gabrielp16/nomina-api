@@ -6,25 +6,57 @@ import type { AuthRequest } from '../middleware/auth.js';
 const router = express.Router();
 
 // GET /api/activity - Obtener todas las actividades con paginación
-router.get('/', auth, requirePermission('READ_ACTIVITY'), async (req: AuthRequest, res) => {
+router.get('/', auth, requirePermission('READ_AUDIT'), async (req: AuthRequest, res) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
-    const search = req.query.search as string;
+    const search = (req.query.search as string || '').trim();
+    const userId = (req.query.userId as string || '').trim();
+    const resource = (req.query.resource as string || '').trim();
+    const from = (req.query.from as string || '').trim();
+    const to = (req.query.to as string || '').trim();
     const skip = (page - 1) * limit;
 
     // Construir query de búsqueda
-    let query: any = {};
+    const query: any = {};
+
+    if (userId) {
+      query.userId = userId;
+    }
+
+    if (resource) {
+      query.resource = resource;
+    }
+
+    if (from || to) {
+      query.timestamp = {} as Record<string, Date>;
+      if (from) {
+        const fromDate = new Date(from);
+        if (!isNaN(fromDate.getTime())) {
+          query.timestamp.$gte = fromDate;
+        }
+      }
+      if (to) {
+        const toDate = new Date(to);
+        if (!isNaN(toDate.getTime())) {
+          // Incluir todo el día seleccionado
+          toDate.setHours(23, 59, 59, 999);
+          query.timestamp.$lte = toDate;
+        }
+      }
+      if (Object.keys(query.timestamp).length === 0) {
+        delete query.timestamp;
+      }
+    }
+
     if (search) {
-      query = {
-        $or: [
-          { userName: { $regex: search, $options: 'i' } },
-          { userEmail: { $regex: search, $options: 'i' } },
-          { action: { $regex: search, $options: 'i' } },
-          { resource: { $regex: search, $options: 'i' } },
-          { details: { $regex: search, $options: 'i' } }
-        ]
-      };
+      query.$or = [
+        { userName: { $regex: search, $options: 'i' } },
+        { userEmail: { $regex: search, $options: 'i' } },
+        { action: { $regex: search, $options: 'i' } },
+        { resource: { $regex: search, $options: 'i' } },
+        { details: { $regex: search, $options: 'i' } }
+      ];
     }
 
     // Obtener actividades con paginación
@@ -64,7 +96,7 @@ router.get('/', auth, requirePermission('READ_ACTIVITY'), async (req: AuthReques
 });
 
 // GET /api/activity/:id - Obtener una actividad específica
-router.get('/:id', auth, requirePermission('READ_ACTIVITY'), async (req: AuthRequest, res) => {
+router.get('/:id', auth, requirePermission('READ_AUDIT'), async (req: AuthRequest, res) => {
   try {
     const activity = await Activity.findById(req.params.id);
     
@@ -90,7 +122,7 @@ router.get('/:id', auth, requirePermission('READ_ACTIVITY'), async (req: AuthReq
 });
 
 // GET /api/activity/user/:userId - Obtener actividades de un usuario específico
-router.get('/user/:userId', auth, requirePermission('READ_ACTIVITY'), async (req: AuthRequest, res) => {
+router.get('/user/:userId', auth, requirePermission('READ_AUDIT'), async (req: AuthRequest, res) => {
   try {
     const { userId } = req.params;
     const page = parseInt(req.query.page as string) || 1;
