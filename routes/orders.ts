@@ -435,7 +435,7 @@ const buildOrderItems = async (
   };
 };
 
-router.get('/options', auth, requirePermission('READ_PAYROLL'), asyncHandler(async (_req: AuthRequest, res: Response) => {
+router.get('/options', auth, requirePermission('READ_ORDERS'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   const [clients, products, inventory] = await Promise.all([
     Client.find({ active: true }).select('name').sort({ name: 1 }),
     Product.find({ active: true }).select('name productCode barcode price').sort({ name: 1 }),
@@ -454,7 +454,7 @@ router.get('/options', auth, requirePermission('READ_PAYROLL'), asyncHandler(asy
   });
 }));
 
-router.get('/', auth, requirePermission('READ_PAYROLL'), listValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+router.get('/', auth, requirePermission('READ_ORDERS'), listValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -518,7 +518,7 @@ router.get('/', auth, requirePermission('READ_PAYROLL'), listValidation, asyncHa
   });
 }));
 
-router.post('/', auth, requirePermission('CREATE_PAYROLL'), activityLogger('CREATE', 'ORDER'), orderItemValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+router.post('/', auth, requirePermission('CREATE_ORDERS'), activityLogger('CREATE', 'ORDER'), orderItemValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -630,7 +630,7 @@ router.post('/', auth, requirePermission('CREATE_PAYROLL'), activityLogger('CREA
   }
 }));
 
-router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UPDATE', 'ORDER'), orderItemValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+router.put('/:id', auth, requirePermission('UPDATE_ORDERS'), activityLogger('UPDATE', 'ORDER'), orderItemValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -843,7 +843,7 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
   }
 }));
 
-router.delete('/:id', auth, requirePermission('DELETE_PAYROLL'), activityLogger('DELETE', 'ORDER'), asyncHandler(async (req: AuthRequest, res: Response) => {
+router.delete('/:id', auth, requirePermission('DELETE_ORDERS'), activityLogger('DELETE', 'ORDER'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const order = await Order.findById(req.params.id);
 
   if (!order) {

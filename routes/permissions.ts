@@ -61,6 +61,7 @@ router.get('/', auth, requirePermission('READ_PERMISSIONS'), asyncHandler(async 
   const search = req.query.search as string || '';
   const modulo = req.query.modulo as string || '';
   const accion = req.query.accion as string || '';
+  const estado = req.query.estado as string || '';
   const skip = (page - 1) * limit;
 
   // Construir filtro de búsqueda
@@ -80,6 +81,14 @@ router.get('/', auth, requirePermission('READ_PERMISSIONS'), asyncHandler(async 
   
   if (accion) {
     searchFilter.accion = accion;
+  }
+
+  if (estado === 'active') {
+    searchFilter.isActive = true;
+  }
+
+  if (estado === 'inactive') {
+    searchFilter.isActive = false;
   }
 
   // Obtener permisos con paginación

@@ -39,7 +39,7 @@ const updateInventoryValidation = [
   body('expirationDate').optional().trim().matches(expirationDateRegex).withMessage('La fecha de vencimiento debe seguir el formato YYYY/MM/DD')
 ];
 
-router.get('/summary', auth, requirePermission('READ_PAYROLL'), asyncHandler(async (_req: AuthRequest, res: Response) => {
+router.get('/summary', auth, requirePermission('READ_INVENTORY'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   const summary = await Inventory.aggregate([
     {
       $group: {
@@ -74,7 +74,7 @@ router.get('/summary', auth, requirePermission('READ_PAYROLL'), asyncHandler(asy
   res.json({ success: true, data });
 }));
 
-router.get('/', auth, requirePermission('READ_PAYROLL'), listValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+router.get('/', auth, requirePermission('READ_INVENTORY'), listValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -138,7 +138,7 @@ router.get('/', auth, requirePermission('READ_PAYROLL'), listValidation, asyncHa
   });
 }));
 
-router.post('/', auth, requirePermission('CREATE_PAYROLL'), activityLogger('CREATE', 'INVENTORY'), createInventoryValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+router.post('/', auth, requirePermission('CREATE_INVENTORY'), activityLogger('CREATE', 'INVENTORY'), createInventoryValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -205,7 +205,7 @@ router.post('/', auth, requirePermission('CREATE_PAYROLL'), activityLogger('CREA
   }
 }));
 
-router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UPDATE', 'INVENTORY'), updateInventoryValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+router.put('/:id', auth, requirePermission('UPDATE_INVENTORY'), activityLogger('UPDATE', 'INVENTORY'), updateInventoryValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -462,7 +462,7 @@ router.put('/:id', auth, requirePermission('UPDATE_PAYROLL'), activityLogger('UP
   });
 }));
 
-router.delete('/:id', auth, requirePermission('DELETE_PAYROLL'), activityLogger('DELETE', 'INVENTORY'), asyncHandler(async (req: AuthRequest, res: Response) => {
+router.delete('/:id', auth, requirePermission('DELETE_INVENTORY'), activityLogger('DELETE', 'INVENTORY'), asyncHandler(async (req: AuthRequest, res: Response) => {
   try {
     const result = await revertPackagedInventoryTransformation({
       inventoryId: req.params.id,

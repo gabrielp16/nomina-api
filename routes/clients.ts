@@ -93,8 +93,8 @@ const categoryIdValidation = [
 
 // @route   POST /api/clients/categories
 // @desc    Crear categoria de cliente
-// @access  Private (CREATE_USERS permission)
-router.post('/categories', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE', 'CLIENT_CATEGORY'), createCategoryValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (CREATE_CLIENTS permission)
+router.post('/categories', auth, requirePermission('CREATE_CLIENTS'), activityLogger('CREATE', 'CLIENT_CATEGORY'), createCategoryValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -125,8 +125,8 @@ router.post('/categories', auth, requirePermission('CREATE_USERS'), activityLogg
 
 // @route   GET /api/clients/categories
 // @desc    Obtener categorias de clientes
-// @access  Private (READ_USERS permission)
-router.get('/categories', auth, requirePermission('READ_USERS'), asyncHandler(async (_req: AuthRequest, res: Response) => {
+// @access  Private (READ_CLIENTS permission)
+router.get('/categories', auth, requirePermission('READ_CLIENTS'), asyncHandler(async (_req: AuthRequest, res: Response) => {
   const categories = await ClientCategory.find().sort({ name: 1 });
 
   res.json({
@@ -137,8 +137,8 @@ router.get('/categories', auth, requirePermission('READ_USERS'), asyncHandler(as
 
 // @route   PUT /api/clients/categories/:id
 // @desc    Actualizar categoria de cliente
-// @access  Private (UPDATE_USERS permission)
-router.put('/categories/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDATE', 'CLIENT_CATEGORY'), [...categoryIdValidation, ...createCategoryValidation], asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (UPDATE_CLIENTS permission)
+router.put('/categories/:id', auth, requirePermission('UPDATE_CLIENTS'), activityLogger('UPDATE', 'CLIENT_CATEGORY'), [...categoryIdValidation, ...createCategoryValidation], asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -186,8 +186,8 @@ router.put('/categories/:id', auth, requirePermission('UPDATE_USERS'), activityL
 
 // @route   DELETE /api/clients/categories/:id
 // @desc    Eliminar categoria de cliente
-// @access  Private (DELETE_USERS permission)
-router.delete('/categories/:id', auth, requirePermission('DELETE_USERS'), activityLogger('DELETE', 'CLIENT_CATEGORY'), categoryIdValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (DELETE_CLIENTS permission)
+router.delete('/categories/:id', auth, requirePermission('DELETE_CLIENTS'), activityLogger('DELETE', 'CLIENT_CATEGORY'), categoryIdValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -223,8 +223,8 @@ router.delete('/categories/:id', auth, requirePermission('DELETE_USERS'), activi
 
 // @route   POST /api/clients
 // @desc    Crear cliente
-// @access  Private (CREATE_USERS permission)
-router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE', 'CLIENT'), createClientValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (CREATE_CLIENTS permission)
+router.post('/', auth, requirePermission('CREATE_CLIENTS'), activityLogger('CREATE', 'CLIENT'), createClientValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -273,8 +273,8 @@ router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE
 
 // @route   GET /api/clients
 // @desc    Obtener listado de clientes con paginacion
-// @access  Private (READ_USERS permission)
-router.get('/', auth, requirePermission('READ_USERS'), listValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (READ_CLIENTS permission)
+router.get('/', auth, requirePermission('READ_CLIENTS'), listValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -343,8 +343,8 @@ router.get('/', auth, requirePermission('READ_USERS'), listValidation, asyncHand
 
 // @route   PUT /api/clients/:id
 // @desc    Actualizar cliente
-// @access  Private (UPDATE_USERS permission)
-router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDATE', 'CLIENT'), updateClientValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (UPDATE_CLIENTS permission)
+router.put('/:id', auth, requirePermission('UPDATE_CLIENTS'), activityLogger('UPDATE', 'CLIENT'), updateClientValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -401,8 +401,8 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
 
 // @route   DELETE /api/clients/:id
 // @desc    Eliminar cliente
-// @access  Private (DELETE_USERS permission)
-router.delete('/:id', auth, requirePermission('DELETE_USERS'), activityLogger('DELETE', 'CLIENT'), asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (DELETE_CLIENTS permission)
+router.delete('/:id', auth, requirePermission('DELETE_CLIENTS'), activityLogger('DELETE', 'CLIENT'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const client = await Client.findById(req.params.id);
 
   if (!client) {

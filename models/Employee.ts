@@ -39,7 +39,6 @@ const employeeSchema = new Schema<IEmployee>({
 });
 
 // Índices
-employeeSchema.index({ user: 1 });
 employeeSchema.index({ isActive: 1 });
 
 export default mongoose.model<IEmployee>('Employee', employeeSchema);

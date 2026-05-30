@@ -117,7 +117,11 @@ export const requirePermission = (permission: string) => {
       return;
     }
 
-    if (!req.permissions?.includes(permission)) {
+    const hasPermission =
+      req.permissions?.includes(permission) ||
+      req.permissions?.includes('MANAGE_ALL');
+
+    if (!hasPermission) {
       res.status(403).json({
         success: false,
         message: `Permission '${permission}' required to access this resource.`,

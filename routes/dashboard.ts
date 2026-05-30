@@ -61,7 +61,7 @@ router.get('/stats', auth, requirePermission('READ_DASHBOARD'), async (req, res)
 });
 
 // GET /api/dashboard/recent-activities - Obtener actividades recientes
-router.get('/recent-activities', auth, requirePermission('READ_AUDIT'), async (req, res) => {
+router.get('/recent-activities', auth, requirePermission('READ_ACTIVITY'), async (req, res) => {
   try {
     const limit = parseInt(req.query.limit as string) || 10;
     

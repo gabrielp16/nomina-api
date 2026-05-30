@@ -6,7 +6,7 @@ import type { AuthRequest } from '../middleware/auth.js';
 const router = express.Router();
 
 // GET /api/activity - Obtener todas las actividades con paginación
-router.get('/', auth, requirePermission('READ_AUDIT'), async (req: AuthRequest, res) => {
+router.get('/', auth, requirePermission('READ_ACTIVITY'), async (req: AuthRequest, res) => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 10;
@@ -96,7 +96,7 @@ router.get('/', auth, requirePermission('READ_AUDIT'), async (req: AuthRequest, 
 });
 
 // GET /api/activity/:id - Obtener una actividad específica
-router.get('/:id', auth, requirePermission('READ_AUDIT'), async (req: AuthRequest, res) => {
+router.get('/:id', auth, requirePermission('READ_ACTIVITY'), async (req: AuthRequest, res) => {
   try {
     const activity = await Activity.findById(req.params.id);
     
@@ -122,7 +122,7 @@ router.get('/:id', auth, requirePermission('READ_AUDIT'), async (req: AuthReques
 });
 
 // GET /api/activity/user/:userId - Obtener actividades de un usuario específico
-router.get('/user/:userId', auth, requirePermission('READ_AUDIT'), async (req: AuthRequest, res) => {
+router.get('/user/:userId', auth, requirePermission('READ_ACTIVITY'), async (req: AuthRequest, res) => {
   try {
     const { userId } = req.params;
     const page = parseInt(req.query.page as string) || 1;
@@ -165,7 +165,7 @@ router.get('/user/:userId', auth, requirePermission('READ_AUDIT'), async (req: A
 });
 
 // POST /api/activity - Crear una nueva actividad (solo para el sistema)
-router.post('/', auth, requirePermission('MANAGE_ALL'), async (req: AuthRequest, res) => {
+router.post('/', auth, requirePermission('CREATE_ACTIVITY'), async (req: AuthRequest, res) => {
   try {
     const activityData = req.body;
     const activity = await Activity.logActivity(activityData);
@@ -186,7 +186,7 @@ router.post('/', auth, requirePermission('MANAGE_ALL'), async (req: AuthRequest,
 });
 
 // DELETE /api/activity/:id - Eliminar una actividad (solo administradores)
-router.delete('/:id', auth, requirePermission('MANAGE_ALL'), async (req: AuthRequest, res) => {
+router.delete('/:id', auth, requirePermission('DELETE_ACTIVITY'), async (req: AuthRequest, res) => {
   try {
     const activity = await Activity.findByIdAndDelete(req.params.id);
     

@@ -82,8 +82,8 @@ const createProductValidation = [
 
 // @route   POST /api/products
 // @desc    Crear producto
-// @access  Private (CREATE_USERS permission)
-router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE', 'PRODUCT'), createProductValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (CREATE_PRODUCTS permission)
+router.post('/', auth, requirePermission('CREATE_PRODUCTS'), activityLogger('CREATE', 'PRODUCT'), createProductValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -127,8 +127,8 @@ router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE
 
 // @route   GET /api/products
 // @desc    Obtener listado de productos con paginacion
-// @access  Private (READ_USERS permission)
-router.get('/', auth, requirePermission('READ_USERS'), listValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (READ_PRODUCTS permission)
+router.get('/', auth, requirePermission('READ_PRODUCTS'), listValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -175,8 +175,8 @@ router.get('/', auth, requirePermission('READ_USERS'), listValidation, asyncHand
 
 // @route   PUT /api/products/:id
 // @desc    Actualizar producto
-// @access  Private (UPDATE_USERS permission)
-router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDATE', 'PRODUCT'), updateProductValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (UPDATE_PRODUCTS permission)
+router.put('/:id', auth, requirePermission('UPDATE_PRODUCTS'), activityLogger('UPDATE', 'PRODUCT'), updateProductValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -247,8 +247,8 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
 
 // @route   DELETE /api/products/:id
 // @desc    Eliminar producto
-// @access  Private (DELETE_USERS permission)
-router.delete('/:id', auth, requirePermission('DELETE_USERS'), activityLogger('DELETE', 'PRODUCT'), asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (DELETE_PRODUCTS permission)
+router.delete('/:id', auth, requirePermission('DELETE_PRODUCTS'), activityLogger('DELETE', 'PRODUCT'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const product = await Product.findById(req.params.id);
 
   if (!product) {

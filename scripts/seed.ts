@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 import Permission from '../models/Permission.js';
 import Role from '../models/Role.js';
@@ -44,6 +43,49 @@ const defaultPermissions = [
 
   // Permisos de auditoría
   { nombre: 'READ_AUDIT', descripcion: 'Ver logs de auditoría', modulo: 'AUDITORIA', accion: 'READ' },
+
+  // Permisos por pantalla (estructura CRUD + MANAGE)
+  { nombre: 'CREATE_ACTIVITY', descripcion: 'Crear registros en gestión de actividad', modulo: 'ACTIVITY', accion: 'CREATE' },
+  { nombre: 'READ_ACTIVITY', descripcion: 'Ver gestión de actividad', modulo: 'ACTIVITY', accion: 'READ' },
+  { nombre: 'UPDATE_ACTIVITY', descripcion: 'Actualizar registros en gestión de actividad', modulo: 'ACTIVITY', accion: 'UPDATE' },
+  { nombre: 'DELETE_ACTIVITY', descripcion: 'Eliminar registros en gestión de actividad', modulo: 'ACTIVITY', accion: 'DELETE' },
+  { nombre: 'MANAGE_ACTIVITY', descripcion: 'Gestión completa de actividad', modulo: 'ACTIVITY', accion: 'MANAGE' },
+
+  { nombre: 'CREATE_CLIENTS', descripcion: 'Crear registros de clientes', modulo: 'CLIENTS', accion: 'CREATE' },
+  { nombre: 'READ_CLIENTS', descripcion: 'Ver pantalla de clientes', modulo: 'CLIENTS', accion: 'READ' },
+  { nombre: 'UPDATE_CLIENTS', descripcion: 'Actualizar registros de clientes', modulo: 'CLIENTS', accion: 'UPDATE' },
+  { nombre: 'DELETE_CLIENTS', descripcion: 'Eliminar registros de clientes', modulo: 'CLIENTS', accion: 'DELETE' },
+  { nombre: 'MANAGE_CLIENTS', descripcion: 'Gestión completa de clientes', modulo: 'CLIENTS', accion: 'MANAGE' },
+
+  { nombre: 'CREATE_EMPLOYEES', descripcion: 'Crear registros de empleados', modulo: 'EMPLOYEES', accion: 'CREATE' },
+  { nombre: 'READ_EMPLOYEES', descripcion: 'Ver pantalla de empleados', modulo: 'EMPLOYEES', accion: 'READ' },
+  { nombre: 'UPDATE_EMPLOYEES', descripcion: 'Actualizar registros de empleados', modulo: 'EMPLOYEES', accion: 'UPDATE' },
+  { nombre: 'DELETE_EMPLOYEES', descripcion: 'Eliminar registros de empleados', modulo: 'EMPLOYEES', accion: 'DELETE' },
+  { nombre: 'MANAGE_EMPLOYEES', descripcion: 'Gestión completa de empleados', modulo: 'EMPLOYEES', accion: 'MANAGE' },
+
+  { nombre: 'CREATE_PRODUCTS', descripcion: 'Crear registros de productos', modulo: 'PRODUCTS', accion: 'CREATE' },
+  { nombre: 'READ_PRODUCTS', descripcion: 'Ver pantalla de productos', modulo: 'PRODUCTS', accion: 'READ' },
+  { nombre: 'UPDATE_PRODUCTS', descripcion: 'Actualizar registros de productos', modulo: 'PRODUCTS', accion: 'UPDATE' },
+  { nombre: 'DELETE_PRODUCTS', descripcion: 'Eliminar registros de productos', modulo: 'PRODUCTS', accion: 'DELETE' },
+  { nombre: 'MANAGE_PRODUCTS', descripcion: 'Gestión completa de productos', modulo: 'PRODUCTS', accion: 'MANAGE' },
+
+  { nombre: 'CREATE_INVENTORY', descripcion: 'Crear registros de inventario', modulo: 'INVENTORY', accion: 'CREATE' },
+  { nombre: 'READ_INVENTORY', descripcion: 'Ver pantalla de inventario', modulo: 'INVENTORY', accion: 'READ' },
+  { nombre: 'UPDATE_INVENTORY', descripcion: 'Actualizar registros de inventario', modulo: 'INVENTORY', accion: 'UPDATE' },
+  { nombre: 'DELETE_INVENTORY', descripcion: 'Eliminar registros de inventario', modulo: 'INVENTORY', accion: 'DELETE' },
+  { nombre: 'MANAGE_INVENTORY', descripcion: 'Gestión completa de inventario', modulo: 'INVENTORY', accion: 'MANAGE' },
+
+  { nombre: 'CREATE_ORDERS', descripcion: 'Crear registros de órdenes', modulo: 'ORDERS', accion: 'CREATE' },
+  { nombre: 'READ_ORDERS', descripcion: 'Ver pantalla de órdenes', modulo: 'ORDERS', accion: 'READ' },
+  { nombre: 'UPDATE_ORDERS', descripcion: 'Actualizar registros de órdenes', modulo: 'ORDERS', accion: 'UPDATE' },
+  { nombre: 'DELETE_ORDERS', descripcion: 'Eliminar registros de órdenes', modulo: 'ORDERS', accion: 'DELETE' },
+  { nombre: 'MANAGE_ORDERS', descripcion: 'Gestión completa de órdenes', modulo: 'ORDERS', accion: 'MANAGE' },
+
+  { nombre: 'CREATE_INVOICE_POS', descripcion: 'Crear registros de facturación POS', modulo: 'INVOICE_POS', accion: 'CREATE' },
+  { nombre: 'READ_INVOICE_POS', descripcion: 'Ver pantalla de facturación POS', modulo: 'INVOICE_POS', accion: 'READ' },
+  { nombre: 'UPDATE_INVOICE_POS', descripcion: 'Actualizar registros de facturación POS', modulo: 'INVOICE_POS', accion: 'UPDATE' },
+  { nombre: 'DELETE_INVOICE_POS', descripcion: 'Eliminar registros de facturación POS', modulo: 'INVOICE_POS', accion: 'DELETE' },
+  { nombre: 'MANAGE_INVOICE_POS', descripcion: 'Gestión completa de facturación POS', modulo: 'INVOICE_POS', accion: 'MANAGE' },
   
   // Permisos de nómina (para futuro)
   { nombre: 'CREATE_PAYROLL', descripcion: 'Crear registros de nómina', modulo: 'NOMINA', accion: 'CREATE' },
@@ -77,7 +119,7 @@ const seedPermissions = async (): Promise<mongoose.Types.ObjectId[]> => {
 };
 
 // Función para crear roles
-const seedRoles = async (permissionIds: mongoose.Types.ObjectId[]): Promise<{ adminRoleId: mongoose.Types.ObjectId; userRoleId: mongoose.Types.ObjectId; empleadoRoleId: mongoose.Types.ObjectId }> => {
+const seedRoles = async (permissionIds: mongoose.Types.ObjectId[]): Promise<{ adminRoleId: mongoose.Types.ObjectId; empleadoRoleId: mongoose.Types.ObjectId }> => {
   console.log('🌱 Creando roles por defecto...');
   
   // Rol de Super Administrador - todos los permisos
@@ -118,27 +160,6 @@ const seedRoles = async (permissionIds: mongoose.Types.ObjectId[]): Promise<{ ad
     console.log('  ✓ Rol creado: Administrador');
   } else {
     console.log('  - Rol ya existe: Administrador');
-  }
-
-  // Rol de Usuario - solo lectura
-  const userPermissions = await Permission.find({
-    nombre: {
-      $in: ['READ_DASHBOARD', 'READ_PAYROLL', 'READ_REPORTS']
-    }
-  });
-  
-  let userRole = await Role.findOne({ nombre: 'Usuario' });
-  if (!userRole) {
-    userRole = new Role({
-      nombre: 'Usuario',
-      descripcion: 'Acceso básico de solo lectura al sistema',
-      permisos: userPermissions.map(p => p._id),
-      isActive: true
-    });
-    await userRole.save();
-    console.log('  ✓ Rol creado: Usuario');
-  } else {
-    console.log('  - Rol ya existe: Usuario');
   }
 
   // Rol de Supervisor - permisos intermedios
@@ -217,13 +238,12 @@ const seedRoles = async (permissionIds: mongoose.Types.ObjectId[]): Promise<{ ad
 
   return {
     adminRoleId: superAdminRole._id,
-    userRoleId: userRole._id,
     empleadoRoleId: empleadoRole._id
   };
 };
 
 // Función para crear usuarios por defecto (preservando datos existentes)
-const seedUsers = async (adminRoleId: mongoose.Types.ObjectId, userRoleId: mongoose.Types.ObjectId, empleadoRoleId: mongoose.Types.ObjectId): Promise<void> => {
+const seedUsers = async (adminRoleId: mongoose.Types.ObjectId, empleadoRoleId: mongoose.Types.ObjectId): Promise<void> => {
   console.log('🌱 Verificando/creando usuarios por defecto...');
   
   // Función helper para crear o actualizar usuario sin tocar la contraseña
@@ -255,7 +275,7 @@ const seedUsers = async (adminRoleId: mongoose.Types.ObjectId, userRoleId: mongo
   };
   
   // Usuario Super Administrador
-  const adminUser = await createOrUpdateUser({
+  await createOrUpdateUser({
     nombre: 'Super',
     apellido: 'Administrador',
     correo: 'admin@morchis.com',
@@ -266,18 +286,6 @@ const seedUsers = async (adminRoleId: mongoose.Types.ObjectId, userRoleId: mongo
     authProvider: 'local'
   }, 'admin123', 'administrador');
 
-  // Usuario de prueba
-  const testUser = await createOrUpdateUser({
-    nombre: 'Usuario',
-    apellido: 'Prueba',
-    correo: 'usuario@morchis.com',
-    numeroCelular: '3001234567',
-    role: userRoleId,
-    isActive: true,
-    emailVerified: true,
-    authProvider: 'local'
-  }, 'usuario123', 'de prueba');
-  
   // Usuario Empleado
   const empleadoUser = await createOrUpdateUser({
     nombre: 'Juan',
@@ -320,17 +328,16 @@ const seedDatabase = async (standalone: boolean = true): Promise<void> => {
     console.log(`✅ Permisos procesados: ${permissionIds.length}\n`);
     
     // Crear roles
-    const { adminRoleId, userRoleId, empleadoRoleId } = await seedRoles(permissionIds);
+    const { adminRoleId, empleadoRoleId } = await seedRoles(permissionIds);
     console.log('✅ Roles procesados\n');
     
     // Crear usuarios
-    await seedUsers(adminRoleId, userRoleId, empleadoRoleId);
+    await seedUsers(adminRoleId, empleadoRoleId);
     console.log('✅ Usuarios procesados\n');
     
     console.log('🎉 Proceso de seeding completado exitosamente!');
     console.log('\n📋 Credenciales de acceso:');
     console.log('   👤 Admin: admin@morchis.com / admin123');
-    console.log('   👤 Usuario: usuario@morchis.com / usuario123');
     console.log('   👤 Empleado: empleado@morchis.com / empleado123');
     
   } catch (error) {

@@ -29,8 +29,8 @@ const updateEmployeeValidation = [
 
 // @route   GET /api/employees
 // @desc    Obtener todos los empleados con paginación
-// @access  Private (READ_USERS permission)
-router.get('/', auth, requirePermission('READ_USERS'), asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (READ_EMPLOYEES permission)
+router.get('/', auth, requirePermission('READ_EMPLOYEES'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const page = parseInt(req.query.page as string) || 1;
   const limit = parseInt(req.query.limit as string) || 10;
   const search = req.query.search as string || '';
@@ -91,8 +91,8 @@ router.get('/', auth, requirePermission('READ_USERS'), asyncHandler(async (req: 
 
 // @route   GET /api/employees/:id
 // @desc    Obtener empleado por ID
-// @access  Private (READ_USERS permission)
-router.get('/:id', auth, requirePermission('READ_USERS'), asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (READ_EMPLOYEES permission)
+router.get('/:id', auth, requirePermission('READ_EMPLOYEES'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const employee = await Employee.findById(req.params.id)
     .populate({
       path: 'user',
@@ -114,8 +114,8 @@ router.get('/:id', auth, requirePermission('READ_USERS'), asyncHandler(async (re
 
 // @route   POST /api/employees
 // @desc    Crear nuevo empleado
-// @access  Private (CREATE_USERS permission)
-router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE', 'EMPLOYEE'), employeeValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (CREATE_EMPLOYEES permission)
+router.post('/', auth, requirePermission('CREATE_EMPLOYEES'), activityLogger('CREATE', 'EMPLOYEE'), employeeValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -189,8 +189,8 @@ router.post('/', auth, requirePermission('CREATE_USERS'), activityLogger('CREATE
 
 // @route   PUT /api/employees/:id
 // @desc    Actualizar empleado
-// @access  Private (UPDATE_USERS permission)
-router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDATE', 'EMPLOYEE'), updateEmployeeValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (UPDATE_EMPLOYEES permission)
+router.put('/:id', auth, requirePermission('UPDATE_EMPLOYEES'), activityLogger('UPDATE', 'EMPLOYEE'), updateEmployeeValidation, asyncHandler(async (req: AuthRequest, res: Response) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
     return res.status(400).json({
@@ -233,8 +233,8 @@ router.put('/:id', auth, requirePermission('UPDATE_USERS'), activityLogger('UPDA
 
 // @route   DELETE /api/employees/:id
 // @desc    Desactivar empleado
-// @access  Private (DELETE_USERS permission)
-router.delete('/:id', auth, requirePermission('DELETE_USERS'), activityLogger('DELETE', 'EMPLOYEE'), asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (DELETE_EMPLOYEES permission)
+router.delete('/:id', auth, requirePermission('DELETE_EMPLOYEES'), activityLogger('DELETE', 'EMPLOYEE'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const employee = await Employee.findById(req.params.id);
   if (!employee) {
     return res.status(404).json({
@@ -261,8 +261,8 @@ router.delete('/:id', auth, requirePermission('DELETE_USERS'), activityLogger('D
 
 // @route   GET /api/employees/users/available
 // @desc    Obtener usuarios disponibles para ser empleados (que no sean empleados aún)
-// @access  Private (READ_USERS permission)
-router.get('/users/available', auth, requirePermission('READ_USERS'), asyncHandler(async (req: AuthRequest, res: Response) => {
+// @access  Private (READ_EMPLOYEES permission)
+router.get('/users/available', auth, requirePermission('READ_EMPLOYEES'), asyncHandler(async (req: AuthRequest, res: Response) => {
   // Obtener IDs de usuarios que ya son empleados
   const existingEmployees = await Employee.find({ isActive: true }).select('user');
   const employeeUserIds = existingEmployees.map(emp => emp.user);
